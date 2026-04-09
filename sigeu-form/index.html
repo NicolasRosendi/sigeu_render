@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solicitud de Admisión — UCEMA</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23940028'/><text x='50%25' y='55%25' text-anchor='middle' dominant-baseline='central' font-size='14' fill='white' font-family='sans-serif' font-weight='bold'>UC</text></svg>" />
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    // SET YOUR BACKEND URL HERE
+    // When deploying on Render, change this to your backend Web Service URL
+    window.__API_URL__ = '';
+    // Example: window.__API_URL__ = 'https://sigeu-backend-xxxx.onrender.com';
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ─── UCEMA Brand ───
+const C = {
+  primary: "#940028",
+  primaryDark: "#6d001e",
+  white: "#FFFFFF",
+  bg: "#f8f6f4",
+  card: "#FFFFFF",
+  text: "#1a1a1a",
+  textMid: "#555",
+  textLight: "#999",
+  border: "#e0dbd5",
+  success: "#1a7a3a",
+  successBg: "#e8f5ec",
+  danger: "#c0392b",
+  dangerBg: "#fdecea",
+  focus: "#940028",
+};
+
+const PROGRAMAS = [
+  { codigo: "ABOG", nombre: "Abogacía" },
+  { codigo: "ACTU", nombre: "Actuario" },
+  { codigo: "BA", nombre: "Lic. en Artes Liberales y Ciencias" },
+  { codigo: "CCP", nombre: "Contador Público" },
+  { codigo: "LIE", nombre: "Lic. en Economía" },
+  { codigo: "LIA", nombre: "Lic. en Administración de Empresas" },
+  { codigo: "LIMA", nombre: "Lic. en Marketing" },
+  { codigo: "LFIN", nombre: "Lic. en Finanzas" },
+  { codigo: "ININF N", nombre: "Ingeniería en Informática" },
+  { codigo: "LIND", nombre: "Lic. en Negocios Digitales" },
+  { codigo: "LICP", nombre: "Lic. en Ciencias Políticas" },
+  { codigo: "LIRI", nombre: "Lic. en Relaciones Internacionales" },
+  { codigo: "LIEN", nombre: "Lic. en Economía Empresarial" },
+  { codigo: "LIAN", nombre: "Lic. en Analítica de Negocios" },
+];
+
+const PAISES = ["Albania","Alemania","Argentina","Australia","Austria","Bélgica","Bolivia","Brasil","Bulgaria","Canadá","Chile","China","Colombia","Corea del sur","Costa Rica","Cuba","Dinamarca","Ecuador","Egipto","Escocia","Eslovenia","España","Estados Unidos","Filipinas","Finlandia","Francia","Georgia","Gran Bretaña","Grecia","Guatemala","Haití","Holanda","Honduras","Hungría","India","Inglaterra","Irlanda","Israel","Italia","Japón","Malasia","Marruecos","México","Nicaragua","Noruega","Panamá","Paraguay","Perú","Polonia","Portugal","Puerto Rico","Reino Unido","República Checa","República Dominicana","Rumania","Rusia","Salvador","Singapur","Sudafrica","Suecia","Suiza","Trinidad y Tobago","Turquía","Ucrania","Uruguay","Venezuela","Vietnam"];
+const PROVINCIAS = ["Buenos Aires","CABA","Catamarca","Chaco","Chubut","Córdoba","Corrientes","Entre Ríos","Formosa","Jujuy","La Pampa","La Rioja","Mendoza","Misiones","Neuquen","Rio Negro","Salta","San Juan","San Luis","Santa Cruz","Santa Fe","Santiago del Estero","Tierra del Fuego","Tucumán","OTRA"];
+const PARENTESCOS = ["Madre", "Padre", "Otro"];
+const EDUCACION_NIVELES = ["Primario", "Secundario", "Terciario", "Universitario Grado", "Universitario Posgrado"];
+const COD_PAIS_TEL = ["+54","+1","+55","+56","+57","+58","+591","+593","+595","+598","+52","+34","+39","+44","+49","+33","+81","+86","+91","+61","+7","+20","+27","+30","+31","+32","+35","+36","+37","+38","+40","+41","+42","+43","+45","+46","+47","+48","+60","+62","+63","+64","+65","+66","+82","+84","+90","+92","+93","+94","+95","+96","+97","+98","+99"];
+const INGLES_NIVELES = ["Excelente", "Muy Satisfactoria", "Satisfactoria", "Regular", "No"];
+
+const API_URL = window.__API_URL__ || '';
+
+const genId = () => Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+const today = () => new Date().toISOString().split("T")[0];
+
+// ─── Send form to SIGEU API ───
+const saveSubmission = async (formData) => {
+  try {
+    const payload = { ...formData, _submittedAt: new Date().toISOString() };
+    const res = await fetch(`${API_URL}/api/solicitudes/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Server error');
+    return true;
+  } catch (e) {
+    console.error("Submit error:", e);
+    return false;
+  }
+};
+
+// ─── Components ───
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body, html, #root {
+  font-family: 'Manrope', sans-serif;
+  background: ${C.bg};
+  color: ${C.text};
+  min-height: 100vh;
+}
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+input, select, textarea {
+  font-family: 'Manrope', sans-serif;
+  font-size: 14px;
+  padding: 10px 14px;
+  border: 1.5px solid ${C.border};
+  border-radius: 8px;
+  background: ${C.white};
+  color: ${C.text};
+  transition: border-color 0.2s, box-shadow 0.2s;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: ${C.primary};
+  box-shadow: 0 0 0 3px ${C.primary}15;
+}
+select { cursor: pointer; appearance: auto; }
+textarea { resize: vertical; min-height: 80px; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.4s ease-out both; }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+`;
+
+const Field = ({ label, children, required, hint, span = 1, error }) => (
+  <div style={{ gridColumn: `span ${span}`, display: "flex", flexDirection: "column", gap: 5 }}>
+    <label style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+      {label}
+      {required && <span style={{ color: C.primary, marginLeft: 2 }}>*</span>}
+    </label>
+    {children}
+    {hint && <span style={{ fontSize: 11, color: C.textLight, fontStyle: "italic" }}>{hint}</span>}
+    {error && <span style={{ fontSize: 11, color: C.danger, fontWeight: 600 }}>{error}</span>}
+  </div>
+);
+
+const SectionHeader = ({ title, subtitle, icon }) => (
+  <div style={{
+    padding: "16px 0", marginBottom: 20, marginTop: 8,
+    borderBottom: `3px solid ${C.primary}`,
+    display: "flex", alignItems: "center", gap: 10,
+  }}>
+    {icon && <span style={{ fontSize: 20 }}>{icon}</span>}
+    <div>
+      <h2 style={{ fontSize: 17, fontWeight: 800, color: C.primary, letterSpacing: "0.3px" }}>{title}</h2>
+      {subtitle && <p style={{ fontSize: 12, color: C.textMid, marginTop: 2 }}>{subtitle}</p>}
+    </div>
+  </div>
+);
+
+const FamiliarSection = ({ n, data, onChange }) => {
+  const set = (field, val) => onChange({ ...data, [field]: val });
+  const grid = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 };
+  return (
+    <div style={{ padding: 20, borderRadius: 10, background: "#faf9f7", border: `1px solid ${C.border}`, marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: C.primary, marginBottom: 14 }}>Familiar {n}</div>
+      <div style={grid}>
+        <Field label="Parentesco"><select value={data.parentesco} onChange={e => set("parentesco", e.target.value)}><option value="">Selecciona por favor</option>{PARENTESCOS.map(x => <option key={x}>{x}</option>)}</select></Field>
+        <Field label="¿Vive?"><select value={data.vive} onChange={e => set("vive", e.target.value)}><option value="">Selecciona por favor</option><option>SI</option><option>NO</option></select></Field>
+        <Field label="Nombre"><input value={data.nombre} onChange={e => set("nombre", e.target.value)} /></Field>
+        <Field label="Apellido"><input value={data.apellido} onChange={e => set("apellido", e.target.value)} /></Field>
+        <Field label="Teléfono"><input value={data.telefono} onChange={e => set("telefono", e.target.value)} /></Field>
+        <Field label="E-mail"><input type="email" value={data.email} onChange={e => set("email", e.target.value)} /></Field>
+        <Field label="Empresa"><input value={data.empresa} onChange={e => set("empresa", e.target.value)} /></Field>
+        <Field label="Ocupación"><input value={data.ocupacion} onChange={e => set("ocupacion", e.target.value)} /></Field>
+        <Field label="Educación alcanzada"><select value={data.educacion} onChange={e => set("educacion", e.target.value)}><option value="">Selecciona por favor</option>{EDUCACION_NIVELES.map(x => <option key={x}>{x}</option>)}</select></Field>
+        <Field label="">
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, paddingTop: 22 }}>
+            <input type="checkbox" checked={data.completo} onChange={e => set("completo", e.target.checked)} style={{ width: "auto" }} />
+            ¿Completó sus estudios?
+          </label>
+        </Field>
+      </div>
+    </div>
+  );
+};
+
+// ─── Main Form ───
+const emptyFamiliar = () => ({ parentesco: "", nombre: "", apellido: "", vive: "", telefono: "", email: "", empresa: "", ocupacion: "", educacion: "", completo: false });
+
+function App() {
+  const [step, setStep] = useState(0);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
+  const topRef = useRef(null);
+
+  const [form, setForm] = useState({
+    _formId: genId(),
+    programa: "",
+    ingreso: "",
+    semestre: "",
+    nombre: "",
+    apellido: "",
+    tipoDoc: "DNI",
+    nroDoc: "",
+    nroPasaporte: "",
+    nacionalidad: "Argentina",
+    fechaNacimiento: "",
+    sexo: "",
+    generoAutopercibido: "",
+    email: "",
+    telCodPais: "+54",
+    telCodArea: "",
+    telNumero: "",
+    tel2CodPais: "+54",
+    tel2CodArea: "",
+    tel2Numero: "",
+    domCalle: "",
+    domNumero: "",
+    domPiso: "",
+    domDepto: "",
+    domCP: "",
+    domPais: "Argentina",
+    domProvincia: "",
+    domLocalidad: "",
+    fam1: emptyFamiliar(),
+    fam2: emptyFamiliar(),
+    colegioNombre: "",
+    colegioLocalidad: "",
+    colegioPais: "Argentina",
+    colegioProvincia: "",
+    colegioEstado: "",
+    colegioDesde: "",
+    colegioHasta: "",
+    universidad: "",
+    rpNombre: "",
+    rpApellido: "",
+    rpEmail: "",
+    rpTelCelular: "",
+    rpTelOtro: "",
+    inglesNivel: "",
+    premios: "",
+    actividades: "",
+    aceptaNormativa: false,
+  });
+
+  const set = (field, val) => setForm(prev => ({ ...prev, [field]: val }));
+
+  const steps = [
+    { id: "programa", label: "Programa" },
+    { id: "personal", label: "Datos Personales" },
+    { id: "domicilio", label: "Domicilio" },
+    { id: "familia", label: "Datos Familiares" },
+    { id: "educacion", label: "Historial Educativo" },
+    { id: "pago", label: "Resp. de Cuota" },
+    { id: "otros", label: "Otros Datos" },
+    { id: "normativa", label: "Confirmación" },
+  ];
+
+  const validateStep = () => {
+    const e = {};
+    if (step === 0) {
+      if (!form.programa) e.programa = "Seleccioná un programa";
+      if (!form.ingreso) e.ingreso = "Seleccioná el año de ingreso";
+      if (!form.semestre) e.semestre = "Seleccioná el semestre";
+    } else if (step === 1) {
+      if (!form.nombre.trim()) e.nombre = "Requerido";
+      if (!form.apellido.trim()) e.apellido = "Requerido";
+      if (!form.nroDoc.trim()) e.nroDoc = "Requerido";
+      if (!form.email.trim()) e.email = "Requerido";
+      if (!form.fechaNacimiento) e.fechaNacimiento = "Requerido";
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const nextStep = () => {
+    if (validateStep()) {
+      setStep(s => Math.min(s + 1, steps.length - 1));
+      topRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  const prevStep = () => {
+    setStep(s => Math.max(s - 1, 0));
+    topRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleSubmit = async () => {
+    if (!form.aceptaNormativa) {
+      setErrors({ normativa: "Debés aceptar la normativa para continuar" });
+      return;
+    }
+    setSubmitting(true);
+    const ok = await saveSubmission(form);
+    setSubmitting(false);
+    if (ok) setSubmitted(true);
+    else alert("Error al enviar. Intentá nuevamente.");
+  };
+
+  const grid2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 };
+  const grid3 = { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 };
+
+  if (submitted) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg }}>
+        <style>{css}</style>
+        <div style={{ textAlign: "center", maxWidth: 500, padding: 40 }} className="fade-up">
+          <div style={{ width: 80, height: 80, borderRadius: "50%", background: C.successBg, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", fontSize: 36 }}>✓</div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: C.text, marginBottom: 10 }}>Solicitud Enviada</h1>
+          <p style={{ fontSize: 14, color: C.textMid, lineHeight: 1.6, marginBottom: 8 }}>
+            Tu solicitud de admisión a <strong style={{ color: C.primary }}>{PROGRAMAS.find(p => p.codigo === form.programa)?.nombre}</strong> fue recibida correctamente.
+          </p>
+          <p style={{ fontSize: 13, color: C.textLight, marginBottom: 24 }}>
+            ID de solicitud: <code style={{ background: "#f0f0f0", padding: "2px 8px", borderRadius: 4, fontSize: 12 }}>{form._formId.slice(0, 10).toUpperCase()}</code>
+          </p>
+          <div style={{ padding: 16, borderRadius: 10, background: "#fef9e7", border: "1px solid #f0e0a0", fontSize: 13, color: "#8b6914", lineHeight: 1.5 }}>
+            Te contactaremos por email a <strong>{form.email}</strong> para coordinar los próximos pasos del proceso de admisión.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, paddingBottom: 60 }}>
+      <style>{css}</style>
+      <div ref={topRef} />
+
+      {/* Header */}
+      <header style={{
+        background: C.primary, padding: "0", position: "sticky", top: 0, zIndex: 100,
+        boxShadow: "0 2px 12px rgba(148,0,40,0.2)",
+      }}>
+        <div style={{ maxWidth: 780, margin: "0 auto", padding: "16px 24px", display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 10, background: "rgba(255,255,255,0.15)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 12, fontWeight: 800, color: C.white, letterSpacing: "0.5px",
+          }}>UC</div>
+          <div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 500, letterSpacing: "1.5px", textTransform: "uppercase" }}>Universidad del CEMA</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: C.white }}>Solicitud de Admisión | Grado</div>
+          </div>
+        </div>
+      </header>
+
+      {/* Progress */}
+      <div style={{ maxWidth: 780, margin: "0 auto", padding: "20px 24px 0" }}>
+        <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+          {steps.map((s, i) => (
+            <div key={s.id} style={{
+              flex: 1, height: 4, borderRadius: 2,
+              background: i <= step ? C.primary : C.border,
+              transition: "background 0.3s",
+            }} />
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.textLight }}>
+          <span>Paso {step + 1} de {steps.length}</span>
+          <span style={{ fontWeight: 600, color: C.primary }}>{steps[step].label}</span>
+        </div>
+      </div>
+
+      {/* Form */}
+      <div style={{ maxWidth: 780, margin: "0 auto", padding: "16px 24px" }}>
+        <div style={{
+          background: C.card, borderRadius: 14, padding: "28px 32px",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.03)",
+          border: `1px solid ${C.border}`,
+        }} className="fade-up" key={step}>
+
+          {/* Step 0: Programa */}
+          {step === 0 && (
+            <div>
+              <SectionHeader title="Programa" icon="📚" subtitle="Seleccioná la carrera y el período de ingreso" />
+              <div style={{ marginBottom: 20, padding: "14px 18px", borderRadius: 10, background: "#fef9e7", border: "1px solid #f0e0a0", fontSize: 13, color: "#8b6914", lineHeight: 1.5 }}>
+                Este formulario es único e intransferible. Se solicita no compartirlo.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <Field label="Inscripción a" required error={errors.programa}>
+                  <select value={form.programa} onChange={e => set("programa", e.target.value)}>
+                    <option value="">Selecciona por favor</option>
+                    {PROGRAMAS.map(p => <option key={p.codigo} value={p.codigo}>{p.nombre}</option>)}
+                  </select>
+                </Field>
+                <div style={grid2}>
+                  <Field label="Ingreso" required error={errors.ingreso}>
+                    <select value={form.ingreso} onChange={e => set("ingreso", e.target.value)}>
+                      <option value="">Selecciona por favor</option>
+                      <option>2026</option>
+                      <option>2027</option>
+                    </select>
+                  </Field>
+                  <Field label="Semestre" required error={errors.semestre}>
+                    <select value={form.semestre} onChange={e => set("semestre", e.target.value)}>
+                      <option value="">Selecciona por favor</option>
+                      <option>1er Semestre</option>
+                      <option>2do Semestre</option>
+                    </select>
+                  </Field>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 1: Personal */}
+          {step === 1 && (
+            <div>
+              <SectionHeader title="Datos Personales" icon="👤" />
+              <div style={grid2}>
+                <Field label="Nombre" required error={errors.nombre}><input value={form.nombre} onChange={e => set("nombre", e.target.value)} /></Field>
+                <Field label="Apellido" required error={errors.apellido}><input value={form.apellido} onChange={e => set("apellido", e.target.value)} /></Field>
+              </div>
+              <div style={{ ...grid3, marginTop: 14 }}>
+                <Field label="Tipo de documento" required>
+                  <select value={form.tipoDoc} onChange={e => set("tipoDoc", e.target.value)}>
+                    <option>DNI</option><option>Pasaporte</option><option>CIE</option>
+                  </select>
+                </Field>
+                <Field label="Número de Documento" required error={errors.nroDoc}><input value={form.nroDoc} onChange={e => set("nroDoc", e.target.value)} /></Field>
+                <Field label="Número de Pasaporte"><input value={form.nroPasaporte} onChange={e => set("nroPasaporte", e.target.value)} /></Field>
+              </div>
+              <div style={{ ...grid3, marginTop: 14 }}>
+                <Field label="Nacionalidad"><select value={form.nacionalidad} onChange={e => set("nacionalidad", e.target.value)}>{PAISES.map(x => <option key={x}>{x}</option>)}</select></Field>
+                <Field label="Fecha de Nacimiento" required error={errors.fechaNacimiento}><input type="date" value={form.fechaNacimiento} onChange={e => set("fechaNacimiento", e.target.value)} /></Field>
+                <Field label="Sexo"><select value={form.sexo} onChange={e => set("sexo", e.target.value)}><option value="">Selecciona por favor</option><option>Femenino</option><option>Masculino</option></select></Field>
+              </div>
+              <div style={{ ...grid2, marginTop: 14 }}>
+                <Field label="Género autopercibido" hint="Optativo y confidencial"><input value={form.generoAutopercibido} onChange={e => set("generoAutopercibido", e.target.value)} /></Field>
+                <Field label="E-mail" required error={errors.email}><input type="email" value={form.email} onChange={e => set("email", e.target.value)} /></Field>
+              </div>
+
+              <div style={{ marginTop: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10 }}>Teléfono celular</div>
+                <div style={grid3}>
+                  <Field label="Código de país"><select value={form.telCodPais} onChange={e => set("telCodPais", e.target.value)}>{COD_PAIS_TEL.map(x => <option key={x}>{x}</option>)}</select></Field>
+                  <Field label="Código de área"><input value={form.telCodArea} onChange={e => set("telCodArea", e.target.value)} placeholder="11" /></Field>
+                  <Field label="Número"><input value={form.telNumero} onChange={e => set("telNumero", e.target.value)} placeholder="12345678" /></Field>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10 }}>Teléfono (otro)</div>
+                <div style={grid3}>
+                  <Field label="Código de país"><select value={form.tel2CodPais} onChange={e => set("tel2CodPais", e.target.value)}>{COD_PAIS_TEL.map(x => <option key={x}>{x}</option>)}</select></Field>
+                  <Field label="Código de área"><input value={form.tel2CodArea} onChange={e => set("tel2CodArea", e.target.value)} /></Field>
+                  <Field label="Número"><input value={form.tel2Numero} onChange={e => set("tel2Numero", e.target.value)} /></Field>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Domicilio */}
+          {step === 2 && (
+            <div>
+              <SectionHeader title="Domicilio" icon="🏠" />
+              <div style={grid2}>
+                <Field label="Calle"><input value={form.domCalle} onChange={e => set("domCalle", e.target.value)} /></Field>
+                <Field label="Número"><input value={form.domNumero} onChange={e => set("domNumero", e.target.value)} /></Field>
+              </div>
+              <div style={{ ...grid3, marginTop: 14 }}>
+                <Field label="Piso"><input value={form.domPiso} onChange={e => set("domPiso", e.target.value)} /></Field>
+                <Field label="Depto"><input value={form.domDepto} onChange={e => set("domDepto", e.target.value)} /></Field>
+                <Field label="CP"><input value={form.domCP} onChange={e => set("domCP", e.target.value)} /></Field>
+              </div>
+              <div style={{ ...grid3, marginTop: 14 }}>
+                <Field label="País"><select value={form.domPais} onChange={e => set("domPais", e.target.value)}>{PAISES.map(x => <option key={x}>{x}</option>)}</select></Field>
+                <Field label="Provincia">{form.domPais === "Argentina" ?
+                  <select value={form.domProvincia} onChange={e => set("domProvincia", e.target.value)}><option value="">Selecciona por favor</option>{PROVINCIAS.map(x => <option key={x}>{x}</option>)}</select>
+                  : <input value={form.domProvincia} onChange={e => set("domProvincia", e.target.value)} />}
+                </Field>
+                <Field label="Localidad"><input value={form.domLocalidad} onChange={e => set("domLocalidad", e.target.value)} /></Field>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Familia */}
+          {step === 3 && (
+            <div>
+              <SectionHeader title="Datos Familiares" icon="👨‍👩‍👧" />
+              <FamiliarSection n={1} data={form.fam1} onChange={v => set("fam1", v)} />
+              <FamiliarSection n={2} data={form.fam2} onChange={v => set("fam2", v)} />
+            </div>
+          )}
+
+          {/* Step 4: Educación */}
+          {step === 4 && (
+            <div>
+              <SectionHeader title="Historial Educativo" icon="🎓" subtitle="Datos del colegio donde cursa el último año de estudios secundarios" />
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <Field label="Nombre del Colegio o Establecimiento"><input value={form.colegioNombre} onChange={e => set("colegioNombre", e.target.value)} /></Field>
+                <div style={grid3}>
+                  <Field label="Localidad"><input value={form.colegioLocalidad} onChange={e => set("colegioLocalidad", e.target.value)} /></Field>
+                  <Field label="País"><select value={form.colegioPais} onChange={e => set("colegioPais", e.target.value)}>{PAISES.map(x => <option key={x}>{x}</option>)}</select></Field>
+                  <Field label="Provincia">{form.colegioPais === "Argentina" ?
+                    <select value={form.colegioProvincia} onChange={e => set("colegioProvincia", e.target.value)}><option value="">Selecciona por favor</option>{PROVINCIAS.map(x => <option key={x}>{x}</option>)}</select>
+                    : <input value={form.colegioProvincia} onChange={e => set("colegioProvincia", e.target.value)} />}
+                  </Field>
+                </div>
+                <div style={grid3}>
+                  <Field label="Estado"><input value={form.colegioEstado} onChange={e => set("colegioEstado", e.target.value)} placeholder="Cursando / Finalizado" /></Field>
+                  <Field label="Período Cursado - Desde"><input type="date" value={form.colegioDesde} onChange={e => set("colegioDesde", e.target.value)} /></Field>
+                  <Field label="Período Cursado - Hasta"><input type="date" value={form.colegioHasta} onChange={e => set("colegioHasta", e.target.value)} /></Field>
+                </div>
+                <Field label="Universidad" hint="Completar solo si corresponde"><input value={form.universidad} onChange={e => set("universidad", e.target.value)} /></Field>
+              </div>
+            </div>
+          )}
+
+          {/* Step 5: Responsable de Pago */}
+          {step === 5 && (
+            <div>
+              <SectionHeader title="Datos del Responsable de la Cuota" icon="💳" subtitle="Esta información se utilizará solo para el envío de información vinculada a formas de pago, actualización de aranceles y fechas de vencimiento." />
+              <div style={grid2}>
+                <Field label="Nombre"><input value={form.rpNombre} onChange={e => set("rpNombre", e.target.value)} /></Field>
+                <Field label="Apellido"><input value={form.rpApellido} onChange={e => set("rpApellido", e.target.value)} /></Field>
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <Field label="E-mail"><input type="email" value={form.rpEmail} onChange={e => set("rpEmail", e.target.value)} /></Field>
+              </div>
+              <div style={{ ...grid2, marginTop: 14 }}>
+                <Field label="Teléfono celular" hint="Indicar solo números, sin espacios (Ej: 541168718933)"><input value={form.rpTelCelular} onChange={e => set("rpTelCelular", e.target.value)} /></Field>
+                <Field label="Teléfono (otro)" hint="Indicar solo números, sin espacios (Ej: 541168718933)"><input value={form.rpTelOtro} onChange={e => set("rpTelOtro", e.target.value)} /></Field>
+              </div>
+            </div>
+          )}
+
+          {/* Step 6: Otros */}
+          {step === 6 && (
+            <div>
+              <SectionHeader title="Otros Datos" icon="📝" />
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <Field label="Evalúe su capacidad de lectura en inglés">
+                  <select value={form.inglesNivel} onChange={e => set("inglesNivel", e.target.value)}>
+                    <option value="">Selecciona por favor</option>
+                    {INGLES_NIVELES.map(x => <option key={x}>{x}</option>)}
+                  </select>
+                </Field>
+                <Field label="Detalle de premios o distinciones académicas obtenidas"><textarea value={form.premios} onChange={e => set("premios", e.target.value)} /></Field>
+                <Field label="Describa otras actividades de su interés (culturales, hobbies, etc)"><textarea value={form.actividades} onChange={e => set("actividades", e.target.value)} /></Field>
+              </div>
+            </div>
+          )}
+
+          {/* Step 7: Confirmación */}
+          {step === 7 && (
+            <div>
+              <SectionHeader title="Confirmación" icon="✅" />
+
+              {/* Summary */}
+              <div style={{ padding: 20, borderRadius: 10, background: "#faf9f7", border: `1px solid ${C.border}`, marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.primary, marginBottom: 12 }}>Resumen de la solicitud</div>
+                <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 16px", fontSize: 13 }}>
+                  <span style={{ fontWeight: 600, color: C.textMid }}>Programa:</span>
+                  <span>{PROGRAMAS.find(p => p.codigo === form.programa)?.nombre} ({form.programa})</span>
+                  <span style={{ fontWeight: 600, color: C.textMid }}>Ingreso:</span>
+                  <span>{form.ingreso} — {form.semestre}</span>
+                  <span style={{ fontWeight: 600, color: C.textMid }}>Nombre:</span>
+                  <span>{form.nombre} {form.apellido}</span>
+                  <span style={{ fontWeight: 600, color: C.textMid }}>Documento:</span>
+                  <span>{form.tipoDoc} {form.nroDoc}</span>
+                  <span style={{ fontWeight: 600, color: C.textMid }}>Email:</span>
+                  <span>{form.email}</span>
+                  <span style={{ fontWeight: 600, color: C.textMid }}>Celular:</span>
+                  <span>{form.telCodPais} {form.telCodArea} {form.telNumero}</span>
+                </div>
+              </div>
+
+              {/* Normativa */}
+              <div style={{ padding: 20, borderRadius: 10, background: errors.normativa ? C.dangerBg : "#fff", border: `1.5px solid ${errors.normativa ? C.danger : C.border}`, }}>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 13, lineHeight: 1.6 }}>
+                  <input type="checkbox" checked={form.aceptaNormativa} onChange={e => { set("aceptaNormativa", e.target.checked); setErrors({}); }}
+                    style={{ width: "auto", marginTop: 3, accentColor: C.primary }} />
+                  <span>
+                    Declaro conocer y aceptar los <strong>aranceles, reglamentos y requisitos de ingreso, permanencia, promoción y graduación</strong> de la carrera cuya admisión solicito.
+                  </span>
+                </label>
+                {errors.normativa && <div style={{ fontSize: 12, color: C.danger, fontWeight: 600, marginTop: 8 }}>{errors.normativa}</div>}
+              </div>
+            </div>
+          )}
+
+          {/* Navigation */}
+          <div style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            marginTop: 28, paddingTop: 20, borderTop: `1px solid ${C.border}`,
+          }}>
+            {step > 0 ? (
+              <button onClick={prevStep} style={{
+                padding: "10px 24px", borderRadius: 8, fontSize: 14, fontWeight: 600,
+                background: "transparent", border: `1.5px solid ${C.border}`, color: C.textMid,
+                cursor: "pointer",
+              }}>← Anterior</button>
+            ) : <div />}
+
+            {step < steps.length - 1 ? (
+              <button onClick={nextStep} style={{
+                padding: "10px 28px", borderRadius: 8, fontSize: 14, fontWeight: 700,
+                background: C.primary, color: C.white, border: "none", cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(148,0,40,0.2)",
+              }}>Siguiente →</button>
+            ) : (
+              <button onClick={handleSubmit} disabled={submitting} style={{
+                padding: "12px 32px", borderRadius: 8, fontSize: 14, fontWeight: 700,
+                background: submitting ? C.textLight : C.success, color: C.white,
+                border: "none", cursor: submitting ? "wait" : "pointer",
+                boxShadow: `0 2px 8px rgba(26,122,58,0.2)`,
+              }}>
+                {submitting ? "Enviando..." : "Enviar Solicitud"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ textAlign: "center", marginTop: 24, fontSize: 11, color: C.textLight }}>
+          Universidad del CEMA — Av. Córdoba 374, Buenos Aires, Argentina
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
