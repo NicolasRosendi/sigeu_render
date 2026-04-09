@@ -137,6 +137,138 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
+// ─── MATRÍCULA ───
+app.get('/api/matriculas/:solicitudId', (req, res) => {
+  const row = db.prepare('SELECT * FROM matriculas WHERE solicitud_id = ?').get(req.params.solicitudId);
+  res.json(row || null);
+});
+
+app.post('/api/matriculas', (req, res) => {
+  const { solicitudId, monto } = req.body;
+  const id = genId();
+  db.prepare('INSERT INTO matriculas (id, solicitud_id, monto) VALUES (?, ?, ?)').run(id, solicitudId, monto || 0);
+  res.status(201).json(db.prepare('SELECT * FROM matriculas WHERE id = ?').get(id));
+});
+
+app.put('/api/matriculas/:id', (req, res) => {
+  const { pagado, fechaPago, monto, observaciones } = req.body;
+  db.prepare('UPDATE matriculas SET pagado=?, fecha_pago=?, monto=?, observaciones=? WHERE id=?')
+    .run(pagado ? 1 : 0, fechaPago || null, monto || 0, observaciones || '', req.params.id);
+  res.json(db.prepare('SELECT * FROM matriculas WHERE id = ?').get(req.params.id));
+});
+
+// ─── CUOTAS ───
+app.get('/api/cuotas/:solicitudId', (req, res) => {
+  const rows = db.prepare('SELECT * FROM cuotas WHERE solicitud_id = ? ORDER BY anio, mes').all(req.params.solicitudId);
+  res.json(rows);
+});
+
+// Generate missing monthly cuotas up to current month
+app.post('/api/cuotas/generate/:solicitudId', (req, res) => {
+  const sol = db.prepare('SELECT * FROM solicitudes WHERE id = ?').get(req.params.solicitudId);
+  if (!sol || sol.resultado_admision !== 'Admitido') return res.status(400).json({ error: 'Solo para admitidos' });
+
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  
+  // Start from admission or beginning of year
+  const startMonth = sol.periodo_ingreso === '2º Semestre' ? 7 : 3; // March or July
+  const startYear = sol.anio_lectivo || currentYear;
+
+  const existing = db.prepare('SELECT mes, anio FROM cuotas WHERE solicitud_id = ?').all(req.params.solicitudId);
+  const existingSet = new Set(existing.map(e => `${e.anio}-${e.mes}`));
+
+  let inserted = 0;
+  let m = startMonth, y = startYear;
+  while (y < currentYear || (y === currentYear && m <= currentMonth)) {
+    if (m === 1 || m === 2) { m++; if (m > 12) { m = 1; y++; } continue; } // Skip Jan/Feb
+    if (!existingSet.has(`${y}-${m}`)) {
+      const id = genId();
+      const venc = `${y}-${String(m).padStart(2, '0')}-10`;
+      db.prepare('INSERT INTO cuotas (id, solicitud_id, mes, anio, monto, fecha_vencimiento) VALUES (?,?,?,?,?,?)')
+        .run(id, req.params.solicitudId, m, y, 0, venc);
+      inserted++;
+    }
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  const rows = db.prepare('SELECT * FROM cuotas WHERE solicitud_id = ? ORDER BY anio, mes').all(req.params.solicitudId);
+  res.json({ inserted, cuotas: rows });
+});
+
+app.put('/api/cuotas/:id', (req, res) => {
+  const { pagado, fechaPago, monto, observaciones } = req.body;
+  db.prepare('UPDATE cuotas SET pagado=?, fecha_pago=?, monto=?, observaciones=? WHERE id=?')
+    .run(pagado ? 1 : 0, fechaPago || null, monto || 0, observaciones || '', req.params.id);
+  res.json(db.prepare('SELECT * FROM cuotas WHERE id = ?').get(req.params.id));
+});
+
+// ─── PLAN DE ESTUDIOS ───
+app.get('/api/plan/:programa', (req, res) => {
+  const rows = db.prepare('SELECT * FROM plan_materias WHERE programa = ? ORDER BY anio_cursada, cuatrimestre, orden').all(req.params.programa);
+  res.json(rows);
+});
+
+app.get('/api/plan', (req, res) => {
+  const rows = db.prepare('SELECT DISTINCT programa FROM plan_materias ORDER BY programa').all();
+  res.json(rows.map(r => r.programa));
+});
+
+// ─── ALUMNO MATERIAS ───
+app.get('/api/alumno-materias/:solicitudId', (req, res) => {
+  const rows = db.prepare(`
+    SELECT am.*, pm.codigo_materia, pm.nombre_materia, pm.anio_cursada, pm.cuatrimestre
+    FROM alumno_materias am
+    JOIN plan_materias pm ON am.plan_materia_id = pm.id
+    WHERE am.solicitud_id = ?
+    ORDER BY pm.anio_cursada, pm.cuatrimestre, pm.orden
+  `).all(req.params.solicitudId);
+  res.json(rows);
+});
+
+// Assign all plan materias to a student
+app.post('/api/alumno-materias/assign/:solicitudId', (req, res) => {
+  const sol = db.prepare('SELECT * FROM solicitudes WHERE id = ?').get(req.params.solicitudId);
+  if (!sol) return res.status(404).json({ error: 'Solicitud no encontrada' });
+
+  const planMaterias = db.prepare('SELECT * FROM plan_materias WHERE programa = ?').all(sol.programa);
+  const existing = db.prepare('SELECT plan_materia_id FROM alumno_materias WHERE solicitud_id = ?').all(req.params.solicitudId);
+  const existingSet = new Set(existing.map(e => e.plan_materia_id));
+
+  let inserted = 0;
+  for (const pm of planMaterias) {
+    if (!existingSet.has(pm.id)) {
+      db.prepare('INSERT INTO alumno_materias (id, solicitud_id, plan_materia_id) VALUES (?, ?, ?)')
+        .run(genId(), req.params.solicitudId, pm.id);
+      inserted++;
+    }
+  }
+
+  const rows = db.prepare(`
+    SELECT am.*, pm.codigo_materia, pm.nombre_materia, pm.anio_cursada, pm.cuatrimestre
+    FROM alumno_materias am
+    JOIN plan_materias pm ON am.plan_materia_id = pm.id
+    WHERE am.solicitud_id = ?
+    ORDER BY pm.anio_cursada, pm.cuatrimestre, pm.orden
+  `).all(req.params.solicitudId);
+  res.json({ inserted, materias: rows });
+});
+
+// Update materia status/grade
+app.put('/api/alumno-materias/:id', (req, res) => {
+  const { estado, nota, fechaAprobacion } = req.body;
+  db.prepare('UPDATE alumno_materias SET estado=?, nota=?, fecha_aprobacion=? WHERE id=?')
+    .run(estado || 'Pendiente', nota ?? null, fechaAprobacion || null, req.params.id);
+  const row = db.prepare(`
+    SELECT am.*, pm.codigo_materia, pm.nombre_materia, pm.anio_cursada, pm.cuatrimestre
+    FROM alumno_materias am
+    JOIN plan_materias pm ON am.plan_materia_id = pm.id
+    WHERE am.id = ?
+  `).get(req.params.id);
+  res.json(row);
+});
+
 function mapFormToDb(f) {
   const id = f._formId || genId();
   return {
