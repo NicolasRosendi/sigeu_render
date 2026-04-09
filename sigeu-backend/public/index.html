@@ -886,6 +886,9 @@ function App() {
     { id: "dashboard", label: "Dashboard", icon: "📊" },
     { id: "solicitudes", label: "Solicitudes", icon: "📋" },
     { id: "admision", label: "Admisión", icon: "✅" },
+    { id: "cobranzas", label: "Cobranzas", icon: "💰" },
+    { id: "alumnos", label: "Alumnos", icon: "🎓" },
+    { id: "planes", label: "Plan de Estudios", icon: "📚" },
     { id: "legajos", label: "Legajos", icon: "📁" },
     { id: "config", label: "Config", icon: "⚙️" },
   ];
@@ -1217,7 +1220,13 @@ function App() {
                               width: 120, padding: 4, fontSize: 11, fontWeight: 600,
                               color: s.resultadoAdmision === "Admitido" ? COLORS.success : s.resultadoAdmision === "No Admitido" ? COLORS.danger : COLORS.textDark,
                             }}
-                              onChange={e => inlineUpdate(s, "resultadoAdmision", e.target.value)}>
+                              onChange={e => {
+                                inlineUpdate(s, "resultadoAdmision", e.target.value);
+                                if (e.target.value === "Admitido") {
+                                  inlineUpdate(s, "fechaAdmision", new Date().toISOString().split('T')[0]);
+                                  fetch('/api/matriculas', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ solicitudId: s.id, monto: 0 }) }).catch(() => {});
+                                }
+                              }}>
                               {ESTADOS_ADMISION.map(e => <option key={e}>{e}</option>)}
                             </select>
                           </td>
@@ -1548,6 +1557,390 @@ function App() {
                   </div>
                 </Card>
               </div>
+            </div>
+          );
+        })()}
+
+        {/* Cobranzas */}
+        {view === "cobranzas" && (() => {
+          const admitidos = data.solicitudes.filter(s => s.resultadoAdmision === "Admitido");
+          const [selAlumno, setSelAlumno] = useState(null);
+          const [matricula, setMatricula] = useState(null);
+          const [cuotas, setCuotas] = useState([]);
+          const [loadingCob, setLoadingCob] = useState(false);
+
+          const loadCobranza = async (sol) => {
+            setSelAlumno(sol);
+            setLoadingCob(true);
+            try {
+              const mRes = await fetch(`/api/matriculas/${sol.id}`);
+              const mData = await mRes.json();
+              if (!mData || !mData.id) {
+                await fetch('/api/matriculas', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ solicitudId: sol.id, monto: 0 }) });
+                const mRes2 = await fetch(`/api/matriculas/${sol.id}`);
+                setMatricula(await mRes2.json());
+              } else {
+                setMatricula(mData);
+              }
+              await fetch(`/api/cuotas/generate/${sol.id}`, { method: 'POST' });
+              const cRes = await fetch(`/api/cuotas/${sol.id}`);
+              setCuotas(await cRes.json());
+            } catch (e) { console.error(e); }
+            setLoadingCob(false);
+          };
+
+          const toggleMatricula = async () => {
+            if (!matricula) return;
+            const updated = { ...matricula, pagado: !matricula.pagado, fechaPago: !matricula.pagado ? new Date().toISOString().split('T')[0] : null };
+            await fetch(`/api/matriculas/${matricula.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updated) });
+            setMatricula({ ...matricula, ...updated });
+          };
+
+          const toggleCuota = async (cuota) => {
+            const updated = { ...cuota, pagado: !cuota.pagado, fechaPago: !cuota.pagado ? new Date().toISOString().split('T')[0] : null };
+            await fetch(`/api/cuotas/${cuota.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updated) });
+            setCuotas(prev => prev.map(c => c.id === cuota.id ? { ...c, pagado: updated.pagado ? 1 : 0, fecha_pago: updated.fechaPago } : c));
+          };
+
+          const meses = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+          return (
+            <div className="fade-in">
+              <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 20 }}>Cobranzas</h1>
+
+              {!selAlumno ? (
+                <div>
+                  <Card style={{ marginBottom: 16 }}>
+                    <p style={{ fontSize: 13, color: COLORS.textMid, marginBottom: 14 }}>Seleccioná un alumno admitido para gestionar matrícula y cuotas.</p>
+                  </Card>
+                  {admitidos.length === 0 ? (
+                    <Card><EmptyState icon="💰" title="Sin admitidos" subtitle="No hay alumnos admitidos para gestionar cobranzas" /></Card>
+                  ) : (
+                    <Card>
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ borderBottom: `2px solid ${COLORS.border}` }}>
+                              {["Apellidos", "Nombres", "Documento", "Programa", "Período", ""].map(h => (
+                                <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 11, fontWeight: 700, color: COLORS.textLight, textTransform: "uppercase" }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {admitidos.map(s => (
+                              <tr key={s.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                                <td style={{ padding: "10px 12px", fontWeight: 600 }}>{s.apellidos}</td>
+                                <td style={{ padding: "10px 12px" }}>{s.nombres}</td>
+                                <td style={{ padding: "10px 12px", fontFamily: "monospace" }}>{s.nroDoc}</td>
+                                <td style={{ padding: "10px 12px", fontWeight: 600, color: COLORS.primary }}>{s.programa}</td>
+                                <td style={{ padding: "10px 12px" }}>{s.periodoIngreso}</td>
+                                <td style={{ padding: "10px 12px" }}>
+                                  <button className="btn-primary btn-sm" onClick={() => loadCobranza(s)}>Ver Cobranza</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                    <button className="btn-secondary btn-sm" onClick={() => { setSelAlumno(null); setMatricula(null); setCuotas([]); }}>← Volver</button>
+                    <div>
+                      <h2 style={{ fontSize: 18, fontWeight: 700 }}>{selAlumno.apellidos}, {selAlumno.nombres}</h2>
+                      <span style={{ fontSize: 12, color: COLORS.textLight }}>{selAlumno.programa} — {selAlumno.periodoIngreso}</span>
+                    </div>
+                  </div>
+
+                  {loadingCob ? (
+                    <Card><p style={{ textAlign: "center", padding: 40, color: COLORS.textLight }}>Cargando...</p></Card>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 16 }}>
+                      {/* Matrícula */}
+                      <Card>
+                        <Section title="Matrícula" icon="🎫">
+                          {matricula && (
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{
+                                padding: "20px", borderRadius: 10, marginBottom: 14,
+                                background: matricula.pagado ? COLORS.successBg : COLORS.dangerBg,
+                                border: `2px solid ${matricula.pagado ? COLORS.success + "40" : COLORS.danger + "40"}`,
+                              }}>
+                                <div style={{ fontSize: 36, marginBottom: 8 }}>{matricula.pagado ? "✅" : "❌"}</div>
+                                <div style={{ fontSize: 15, fontWeight: 700, color: matricula.pagado ? COLORS.success : COLORS.danger }}>
+                                  {matricula.pagado ? "PAGADA" : "PENDIENTE"}
+                                </div>
+                                {matricula.fecha_pago && <div style={{ fontSize: 11, color: COLORS.textLight, marginTop: 4 }}>Pagó el {matricula.fecha_pago}</div>}
+                              </div>
+                              <button className={matricula.pagado ? "btn-secondary" : "btn-primary"} onClick={toggleMatricula} style={{ width: "100%" }}>
+                                {matricula.pagado ? "Marcar como Impaga" : "Marcar como Pagada"}
+                              </button>
+                            </div>
+                          )}
+                        </Section>
+                      </Card>
+
+                      {/* Cuotas */}
+                      <Card>
+                        <Section title="Cuotas Mensuales" icon="📅">
+                          {cuotas.length === 0 ? (
+                            <p style={{ fontSize: 13, color: COLORS.textLight }}>Sin cuotas generadas</p>
+                          ) : (
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+                              {cuotas.map(c => (
+                                <div key={c.id} onClick={() => toggleCuota(c)} style={{
+                                  padding: "12px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                                  background: c.pagado ? COLORS.successBg : "#fff5f5",
+                                  border: `1.5px solid ${c.pagado ? COLORS.success + "40" : COLORS.danger + "30"}`,
+                                  transition: "all 0.15s",
+                                }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textLight, textTransform: "uppercase" }}>{meses[c.mes]} {c.anio}</div>
+                                  <div style={{ fontSize: 20, margin: "6px 0" }}>{c.pagado ? "✅" : "⏳"}</div>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: c.pagado ? COLORS.success : COLORS.danger }}>
+                                    {c.pagado ? "Pagada" : "Adeuda"}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8, background: "#fafafa", fontSize: 12, color: COLORS.textMid }}>
+                            Resumen: {cuotas.filter(c => c.pagado).length}/{cuotas.length} cuotas pagas — {cuotas.filter(c => !c.pagado).length} adeudada{cuotas.filter(c => !c.pagado).length !== 1 ? "s" : ""}
+                          </div>
+                        </Section>
+                      </Card>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Alumnos - Materias */}
+        {view === "alumnos" && (() => {
+          const admitidos = data.solicitudes.filter(s => s.resultadoAdmision === "Admitido");
+          const [selAlumno, setSelAlumno] = useState(null);
+          const [materias, setMaterias] = useState([]);
+          const [loadingMat, setLoadingMat] = useState(false);
+
+          const loadMaterias = async (sol) => {
+            setSelAlumno(sol);
+            setLoadingMat(true);
+            try {
+              const res = await fetch(`/api/alumno-materias/assign/${sol.id}`, { method: 'POST' });
+              const data = await res.json();
+              setMaterias(data.materias || []);
+            } catch (e) { console.error(e); }
+            setLoadingMat(false);
+          };
+
+          const updateMateria = async (mat, campo, valor) => {
+            const body = { estado: mat.estado, nota: mat.nota, fechaAprobacion: mat.fecha_aprobacion };
+            body[campo] = valor;
+            if (campo === 'estado' && valor === 'Aprobada' && !body.fechaAprobacion) {
+              body.fechaAprobacion = new Date().toISOString().split('T')[0];
+            }
+            const res = await fetch(`/api/alumno-materias/${mat.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+            const updated = await res.json();
+            setMaterias(prev => prev.map(m => m.id === mat.id ? updated : m));
+          };
+
+          const estadosMateria = ["Pendiente", "Cursando", "Aprobada", "Desaprobada", "Libre"];
+
+          return (
+            <div className="fade-in">
+              <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 6 }}>Departamento de Alumnos</h1>
+              <p style={{ fontSize: 13, color: COLORS.textLight, marginBottom: 20 }}>Carga de materias según plan de estudio</p>
+
+              {!selAlumno ? (
+                <div>
+                  {admitidos.length === 0 ? (
+                    <Card><EmptyState icon="🎓" title="Sin alumnos" subtitle="No hay alumnos admitidos" /></Card>
+                  ) : (
+                    <Card>
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ borderBottom: `2px solid ${COLORS.border}` }}>
+                              {["Apellidos", "Nombres", "Documento", "Programa", ""].map(h => (
+                                <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 11, fontWeight: 700, color: COLORS.textLight, textTransform: "uppercase" }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {admitidos.map(s => (
+                              <tr key={s.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                                <td style={{ padding: "10px 12px", fontWeight: 600 }}>{s.apellidos}</td>
+                                <td style={{ padding: "10px 12px" }}>{s.nombres}</td>
+                                <td style={{ padding: "10px 12px", fontFamily: "monospace" }}>{s.nroDoc}</td>
+                                <td style={{ padding: "10px 12px", fontWeight: 600, color: COLORS.primary }}>{s.programa}</td>
+                                <td style={{ padding: "10px 12px" }}>
+                                  <button className="btn-primary btn-sm" onClick={() => loadMaterias(s)}>Ver Materias</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                    <button className="btn-secondary btn-sm" onClick={() => { setSelAlumno(null); setMaterias([]); }}>← Volver</button>
+                    <div>
+                      <h2 style={{ fontSize: 18, fontWeight: 700 }}>{selAlumno.apellidos}, {selAlumno.nombres}</h2>
+                      <span style={{ fontSize: 12, color: COLORS.textLight }}>{selAlumno.programa} — Plan {selAlumno.plan}</span>
+                    </div>
+                    <div style={{ marginLeft: "auto", fontSize: 13, color: COLORS.textMid }}>
+                      {materias.filter(m => m.estado === 'Aprobada').length}/{materias.length} aprobadas
+                    </div>
+                  </div>
+
+                  {loadingMat ? (
+                    <Card><p style={{ textAlign: "center", padding: 40, color: COLORS.textLight }}>Cargando materias...</p></Card>
+                  ) : (
+                    <div>
+                      {[1, 2, 3].map(anio => {
+                        const matAnio = materias.filter(m => m.anio_cursada === anio);
+                        if (matAnio.length === 0) return null;
+                        return (
+                          <Card key={anio} style={{ marginBottom: 16 }}>
+                            <h3 style={{ fontSize: 15, fontWeight: 700, color: COLORS.primary, marginBottom: 14 }}>Año {anio}</h3>
+                            {[1, 2].map(cuat => {
+                              const matCuat = matAnio.filter(m => m.cuatrimestre === cuat);
+                              if (matCuat.length === 0) return null;
+                              return (
+                                <div key={cuat} style={{ marginBottom: 16 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.textLight, textTransform: "uppercase", marginBottom: 8, letterSpacing: "0.5px" }}>
+                                    {cuat === 1 ? "1er" : "2do"} Cuatrimestre
+                                  </div>
+                                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                                    <thead>
+                                      <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                                        <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 700, color: COLORS.textLight }}>CÓDIGO</th>
+                                        <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 700, color: COLORS.textLight }}>MATERIA</th>
+                                        <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 700, color: COLORS.textLight }}>ESTADO</th>
+                                        <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 700, color: COLORS.textLight }}>NOTA</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {matCuat.map(m => (
+                                        <tr key={m.id} style={{ borderBottom: `1px solid ${COLORS.border}08` }}>
+                                          <td style={{ padding: "8px 10px", fontFamily: "monospace", fontSize: 11, color: COLORS.textLight }}>{m.codigo_materia}</td>
+                                          <td style={{ padding: "8px 10px", fontWeight: 500 }}>{m.nombre_materia}</td>
+                                          <td style={{ padding: "8px 10px" }}>
+                                            <select value={m.estado} onChange={e => updateMateria(m, 'estado', e.target.value)} style={{
+                                              width: 120, padding: "4px 8px", fontSize: 12, fontWeight: 600,
+                                              color: m.estado === 'Aprobada' ? COLORS.success : m.estado === 'Desaprobada' ? COLORS.danger : m.estado === 'Cursando' ? COLORS.info : COLORS.textMid,
+                                              borderColor: m.estado === 'Aprobada' ? COLORS.success + '40' : COLORS.border,
+                                            }}>
+                                              {estadosMateria.map(e => <option key={e}>{e}</option>)}
+                                            </select>
+                                          </td>
+                                          <td style={{ padding: "8px 10px" }}>
+                                            {(m.estado === 'Aprobada' || m.estado === 'Desaprobada') ? (
+                                              <input type="number" min="1" max="10" value={m.nota || ''} style={{ width: 55, padding: "4px 8px", fontSize: 12, textAlign: "center" }}
+                                                onChange={e => updateMateria(m, 'nota', parseFloat(e.target.value) || null)} />
+                                            ) : <span style={{ color: COLORS.textLight, fontSize: 12 }}>—</span>}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              );
+                            })}
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Plan de Estudios */}
+        {view === "planes" && (() => {
+          const [selProg, setSelProg] = useState("");
+          const [planMaterias, setPlanMaterias] = useState([]);
+          const [loadingPlan, setLoadingPlan] = useState(false);
+
+          const loadPlan = async (prog) => {
+            setSelProg(prog);
+            if (!prog) { setPlanMaterias([]); return; }
+            setLoadingPlan(true);
+            try {
+              const res = await fetch(`/api/plan/${prog}`);
+              setPlanMaterias(await res.json());
+            } catch (e) { console.error(e); }
+            setLoadingPlan(false);
+          };
+
+          return (
+            <div className="fade-in">
+              <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 6 }}>Plan de Estudios</h1>
+              <p style={{ fontSize: 13, color: COLORS.textLight, marginBottom: 20 }}>Materias predeterminadas por programa</p>
+
+              <Card style={{ marginBottom: 16 }}>
+                <Field label="Seleccionar Programa">
+                  <select value={selProg} onChange={e => loadPlan(e.target.value)} style={{ maxWidth: 400 }}>
+                    <option value="">— Elegir programa —</option>
+                    {PROGRAMAS.map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.nombre}</option>)}
+                  </select>
+                </Field>
+              </Card>
+
+              {loadingPlan && <Card><p style={{ textAlign: "center", padding: 40, color: COLORS.textLight }}>Cargando plan...</p></Card>}
+
+              {!loadingPlan && selProg && planMaterias.length > 0 && (
+                <div>
+                  {[1, 2, 3].map(anio => {
+                    const matAnio = planMaterias.filter(m => m.anio_cursada === anio);
+                    if (matAnio.length === 0) return null;
+                    return (
+                      <Card key={anio} style={{ marginBottom: 16 }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 700, color: COLORS.primary, marginBottom: 14 }}>
+                          Año {anio}
+                          <span style={{ fontSize: 12, fontWeight: 500, color: COLORS.textLight, marginLeft: 10 }}>{matAnio.length} materias</span>
+                        </h3>
+                        {[1, 2].map(cuat => {
+                          const matCuat = matAnio.filter(m => m.cuatrimestre === cuat);
+                          if (matCuat.length === 0) return null;
+                          return (
+                            <div key={cuat} style={{ marginBottom: 16 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.textLight, textTransform: "uppercase", marginBottom: 8 }}>
+                                {cuat === 1 ? "1er" : "2do"} Cuatrimestre
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 8 }}>
+                                {matCuat.map(m => (
+                                  <div key={m.id} style={{
+                                    padding: "10px 14px", borderRadius: 8, background: "#faf9f7",
+                                    border: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10,
+                                  }}>
+                                    <span style={{ fontFamily: "monospace", fontSize: 11, color: COLORS.primary, fontWeight: 700, minWidth: 50 }}>{m.codigo_materia}</span>
+                                    <span style={{ fontSize: 13 }}>{m.nombre_materia}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+
+              {!loadingPlan && selProg && planMaterias.length === 0 && (
+                <Card><EmptyState icon="📚" title="Sin materias" subtitle="No hay materias cargadas para este programa" /></Card>
+              )}
             </div>
           );
         })()}
