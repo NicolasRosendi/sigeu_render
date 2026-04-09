@@ -72,6 +72,114 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sol_nro_doc ON solicitudes(nro_doc);
   CREATE INDEX IF NOT EXISTS idx_sol_estado ON solicitudes(resultado_admision);
   CREATE INDEX IF NOT EXISTS idx_sol_form_id ON solicitudes(form_id);
+
+  -- Matrícula: pago único al ser admitido
+  CREATE TABLE IF NOT EXISTS matriculas (
+    id TEXT PRIMARY KEY,
+    solicitud_id TEXT NOT NULL,
+    monto REAL DEFAULT 0,
+    pagado INTEGER DEFAULT 0,
+    fecha_pago TEXT,
+    observaciones TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (solicitud_id) REFERENCES solicitudes(id) ON DELETE CASCADE
+  );
+
+  -- Cuotas mensuales
+  CREATE TABLE IF NOT EXISTS cuotas (
+    id TEXT PRIMARY KEY,
+    solicitud_id TEXT NOT NULL,
+    mes INTEGER NOT NULL,
+    anio INTEGER NOT NULL,
+    monto REAL DEFAULT 0,
+    pagado INTEGER DEFAULT 0,
+    fecha_pago TEXT,
+    fecha_vencimiento TEXT,
+    observaciones TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (solicitud_id) REFERENCES solicitudes(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_cuotas_sol ON cuotas(solicitud_id);
+
+  -- Planes de estudio con materias predeterminadas
+  CREATE TABLE IF NOT EXISTS plan_materias (
+    id TEXT PRIMARY KEY,
+    programa TEXT NOT NULL,
+    codigo_materia TEXT NOT NULL,
+    nombre_materia TEXT NOT NULL,
+    anio_cursada INTEGER DEFAULT 1,
+    cuatrimestre INTEGER DEFAULT 1,
+    orden INTEGER DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_plan_prog ON plan_materias(programa);
+
+  -- Materias asignadas a alumnos
+  CREATE TABLE IF NOT EXISTS alumno_materias (
+    id TEXT PRIMARY KEY,
+    solicitud_id TEXT NOT NULL,
+    plan_materia_id TEXT NOT NULL,
+    estado TEXT DEFAULT 'Pendiente',
+    nota REAL,
+    fecha_aprobacion TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (solicitud_id) REFERENCES solicitudes(id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_materia_id) REFERENCES plan_materias(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_almat_sol ON alumno_materias(solicitud_id);
 `);
+
+// ─── Seed plan de estudios si está vacío ───
+const planCount = db.prepare('SELECT COUNT(*) as c FROM plan_materias').get().c;
+if (planCount === 0) {
+  const programas = ['ABOG','ACTU','BA','CCP','LIE','LIA','LIMA','LFIN','ININF N','LIND','LICP','LIRI','LIEN','LIAN'];
+  const materias = [
+    // Año 1
+    { cod: 'MAT01', nombre: 'Introducción al Pensamiento Científico', anio: 1, cuat: 1 },
+    { cod: 'MAT02', nombre: 'Matemática I', anio: 1, cuat: 1 },
+    { cod: 'MAT03', nombre: 'Introducción a la Economía', anio: 1, cuat: 1 },
+    { cod: 'MAT04', nombre: 'Historia Económica y Social', anio: 1, cuat: 1 },
+    { cod: 'MAT05', nombre: 'Inglés I', anio: 1, cuat: 1 },
+    { cod: 'MAT06', nombre: 'Matemática II', anio: 1, cuat: 2 },
+    { cod: 'MAT07', nombre: 'Microeconomía I', anio: 1, cuat: 2 },
+    { cod: 'MAT08', nombre: 'Contabilidad I', anio: 1, cuat: 2 },
+    { cod: 'MAT09', nombre: 'Derecho Civil', anio: 1, cuat: 2 },
+    { cod: 'MAT10', nombre: 'Inglés II', anio: 1, cuat: 2 },
+    // Año 2
+    { cod: 'MAT11', nombre: 'Estadística I', anio: 2, cuat: 1 },
+    { cod: 'MAT12', nombre: 'Macroeconomía I', anio: 2, cuat: 1 },
+    { cod: 'MAT13', nombre: 'Administración General', anio: 2, cuat: 1 },
+    { cod: 'MAT14', nombre: 'Derecho Comercial', anio: 2, cuat: 1 },
+    { cod: 'MAT15', nombre: 'Inglés III', anio: 2, cuat: 1 },
+    { cod: 'MAT16', nombre: 'Estadística II', anio: 2, cuat: 2 },
+    { cod: 'MAT17', nombre: 'Finanzas I', anio: 2, cuat: 2 },
+    { cod: 'MAT18', nombre: 'Marketing I', anio: 2, cuat: 2 },
+    { cod: 'MAT19', nombre: 'Sistemas de Información', anio: 2, cuat: 2 },
+    { cod: 'MAT20', nombre: 'Inglés IV', anio: 2, cuat: 2 },
+    // Año 3
+    { cod: 'MAT21', nombre: 'Econometría', anio: 3, cuat: 1 },
+    { cod: 'MAT22', nombre: 'Finanzas II', anio: 3, cuat: 1 },
+    { cod: 'MAT23', nombre: 'Recursos Humanos', anio: 3, cuat: 1 },
+    { cod: 'MAT24', nombre: 'Ética Profesional', anio: 3, cuat: 1 },
+    { cod: 'MAT25', nombre: 'Materia Electiva I', anio: 3, cuat: 1 },
+    { cod: 'MAT26', nombre: 'Economía Internacional', anio: 3, cuat: 2 },
+    { cod: 'MAT27', nombre: 'Estrategia Empresarial', anio: 3, cuat: 2 },
+    { cod: 'MAT28', nombre: 'Derecho Tributario', anio: 3, cuat: 2 },
+    { cod: 'MAT29', nombre: 'Materia Electiva II', anio: 3, cuat: 2 },
+    { cod: 'MAT30', nombre: 'Seminario de Tesis', anio: 3, cuat: 2 },
+  ];
+
+  const insert = db.prepare('INSERT INTO plan_materias (id, programa, codigo_materia, nombre_materia, anio_cursada, cuatrimestre, orden) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const seed = db.transaction(() => {
+    let orden = 0;
+    for (const prog of programas) {
+      for (const m of materias) {
+        const id = `${prog}-${m.cod}`;
+        insert.run(id, prog, m.cod, m.nombre, m.anio, m.cuat, orden++);
+      }
+    }
+  });
+  seed();
+  console.log(`  📚 Plan de estudios seeded: ${programas.length} programas × ${materias.length} materias`);
+}
 
 export default db;
