@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SIGEU — Admisiones UCEMA</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23940028'/><text x='50%25' y='55%25' text-anchor='middle' dominant-baseline='central' font-size='14' fill='white' font-family='sans-serif' font-weight='bold'>UC</text></svg>" />
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-type="module">
+const { useState, useEffect, useCallback, useRef } = React;
+
+// ─── Constants ───
+const COLORS = {
+  primary: "#940028",
+  primaryDark: "#6d001e",
+  primaryLight: "#d13559",
+  accent: "#BFBFBF",
+  white: "#FFFFFF",
+  bg: "#F5F3F0",
+  bgCard: "#FFFFFF",
+  textDark: "#1a1a1a",
+  textMid: "#4a4a4a",
+  textLight: "#8a8a8a",
+  border: "#e2ddd8",
+  success: "#1a7a3a",
+  successBg: "#e8f5ec",
+  warning: "#b8860b",
+  warningBg: "#fef9e7",
+  danger: "#c0392b",
+  dangerBg: "#fdecea",
+  infoBg: "#eef2ff",
+  info: "#3b5998",
+};
+
+const PROGRAMAS = [
+  { codigo: "ABOG", nombre: "Abogacía" },
+  { codigo: "ACTU", nombre: "Actuario" },
+  { codigo: "BA", nombre: "Lic. en Artes Liberales y Ciencias" },
+  { codigo: "CCP", nombre: "Contador Público" },
+  { codigo: "LIE", nombre: "Lic. en Economía" },
+  { codigo: "LIA", nombre: "Lic. en Administración de Empresas" },
+  { codigo: "LIMA", nombre: "Lic. en Marketing" },
+  { codigo: "LFIN", nombre: "Lic. en Finanzas" },
+  { codigo: "ININF N", nombre: "Ingeniería en Informática" },
+  { codigo: "LIND", nombre: "Lic. en Negocios Digitales" },
+  { codigo: "LICP", nombre: "Lic. en Ciencias Políticas" },
+  { codigo: "LIRI", nombre: "Lic. en Relaciones Internacionales" },
+  { codigo: "LIEN", nombre: "Lic. en Economía Empresarial" },
+  { codigo: "LIAN", nombre: "Lic. en Analítica de Negocios" },
+];
+
+const ESTADOS_ADMISION = [
+  "Pendiente", "Admitido", "No Admitido", "Lista de Espera",
+  "Desistió", "Admitido Revertido",
+];
+
+const TIPOS_DOC = ["DNI", "Pasaporte", "CI", "LE", "LC"];
+const DEDICACIONES = ["Full-Time", "Part-Time"];
+const TURNOS = ["Mañana", "Tarde", "Noche"];
+const VINCULOS = ["A", "B", "C"];
+const PERIODOS = ["1º Semestre", "2º Semestre"];
+const SEDES = ["Av. Córdoba 374", "Reconquista 775"];
+const NACIONALIDADES = ["Argentina", "Brasil", "Chile", "Colombia", "Uruguay", "Paraguay", "Perú", "México", "España", "Estados Unidos", "Otra"];
+const PROVINCIAS = ["Buenos Aires", "CABA", "Catamarca", "Chaco", "Chubut", "Córdoba", "Corrientes", "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones", "Neuquén", "Río Negro", "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe", "Santiago del Estero", "Tierra del Fuego", "Tucumán"];
+const PARENTESCOS = ["Padre", "Madre", "Tutor/a", "Hermano/a", "Abuelo/a", "Tío/a", "Otro"];
+const NIVELES_EDUCACION = ["Primario", "Secundario", "Terciario", "Universitario", "Posgrado"];
+const CAPACIDAD_INGLES = ["Básico", "Intermedio", "Avanzado", "Nativo", "Sin conocimiento"];
+const DOCS_PRESENTAR = ["Foto 1", "Foto 2", "Solicitud de admisión", "Fotocopia D.N.I.", "Ensayo", "Fotocopia de título certificado", "Analítico secundario", "Certificado de estudios en curso"];
+
+const genId = () => Math.random().toString(36).substr(2, 9);
+const today = () => new Date().toISOString().split("T")[0];
+const currentYear = () => new Date().getFullYear();
+
+// ─── API helpers ───
+const API = '/api';
+
+const defaultData = () => ({
+  solicitudes: [],
+  entrevistas: [],
+  becas: [],
+});
+
+const loadData = async () => {
+  try {
+    const res = await fetch(`${API}/solicitudes`);
+    const solicitudes = await res.json();
+    return { solicitudes, entrevistas: [], becas: [] };
+  } catch {
+    return defaultData();
+  }
+};
+
+const saveData = async () => {
+  // No-op: individual operations now go through API directly
+};
+
+const apiCreate = async (sol) => {
+  const res = await fetch(`${API}/solicitudes`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sol),
+  });
+  return res.json();
+};
+
+const apiUpdate = async (sol) => {
+  const res = await fetch(`${API}/solicitudes/${sol.id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sol),
+  });
+  return res.json();
+};
+
+const apiDelete = async (id) => {
+  await fetch(`${API}/solicitudes/${id}`, { method: 'DELETE' });
+};
+
+const syncFormSubmissions = async () => {
+  // Sync is now handled server-side, this just reloads
+  return { newCount: 0 };
+};
+
+// ─── Styles ───
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body, html, #root {
+  font-family: 'Manrope', sans-serif;
+  background: ${COLORS.bg};
+  color: ${COLORS.textDark};
+  min-height: 100vh;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: ${COLORS.accent}; border-radius: 3px; }
+
+input, select, textarea {
+  font-family: 'Manrope', sans-serif;
+  font-size: 13px;
+  padding: 8px 12px;
+  border: 1.5px solid ${COLORS.border};
+  border-radius: 6px;
+  background: ${COLORS.white};
+  color: ${COLORS.textDark};
+  transition: border-color 0.2s, box-shadow 0.2s;
+  width: 100%;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: ${COLORS.primary};
+  box-shadow: 0 0 0 3px ${COLORS.primary}18;
+}
+
+select { cursor: pointer; appearance: auto; }
+textarea { resize: vertical; min-height: 60px; }
+
+button {
+  font-family: 'Manrope', sans-serif;
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px 16px;
+  transition: all 0.15s;
+}
+
+button:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: ${COLORS.primary};
+  color: ${COLORS.white};
+}
+.btn-primary:hover { background: ${COLORS.primaryDark}; }
+
+.btn-secondary {
+  background: transparent;
+  color: ${COLORS.primary};
+  border: 1.5px solid ${COLORS.primary};
+}
+.btn-secondary:hover { background: ${COLORS.primary}08; }
+
+.btn-ghost {
+  background: transparent;
+  color: ${COLORS.textMid};
+  padding: 6px 10px;
+}
+.btn-ghost:hover { background: ${COLORS.border}40; }
+
+.btn-danger {
+  background: ${COLORS.danger};
+  color: ${COLORS.white};
+}
+
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.fade-in { animation: fadeIn 0.3s ease-out; }
+.slide-in { animation: slideIn 0.25s ease-out; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+`;
+
+// ─── Components ───
+
+const Badge = ({ status }) => {
+  const map = {
+    Admitido: { bg: COLORS.successBg, color: COLORS.success },
+    "No Admitido": { bg: COLORS.dangerBg, color: COLORS.danger },
+    "Lista de Espera": { bg: COLORS.warningBg, color: COLORS.warning },
+    Desistió: { bg: "#f0f0f0", color: COLORS.textLight },
+    "Admitido Revertido": { bg: "#fff0e6", color: "#cc6600" },
+    Pendiente: { bg: COLORS.infoBg, color: COLORS.info },
+  };
+  const s = map[status] || map.Pendiente;
+  return (
+    <span className="badge" style={{ background: s.bg, color: s.color }}>
+      {status}
+    </span>
+  );
+};
+
+const Field = ({ label, children, span = 1, required }) => (
+  <div style={{ gridColumn: `span ${span}`, display: "flex", flexDirection: "column", gap: 4 }}>
+    <label style={{ fontSize: 11, fontWeight: 600, color: COLORS.textMid, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+      {label}{required && <span style={{ color: COLORS.primary }}> *</span>}
+    </label>
+    {children}
+  </div>
+);
+
+const Section = ({ title, children, icon }) => (
+  <div style={{ marginBottom: 20 }} className="fade-in">
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, paddingBottom: 8, borderBottom: `2px solid ${COLORS.primary}` }}>
+      {icon && <span style={{ fontSize: 16 }}>{icon}</span>}
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: COLORS.primary, textTransform: "uppercase", letterSpacing: "0.8px" }}>{title}</h3>
+    </div>
+    {children}
+  </div>
+);
+
+const Card = ({ children, style }) => (
+  <div style={{
+    background: COLORS.bgCard,
+    borderRadius: 10,
+    padding: 24,
+    boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+    border: `1px solid ${COLORS.border}`,
+    ...style,
+  }}>
+    {children}
+  </div>
+);
+
+const EmptyState = ({ icon, title, subtitle, action }) => (
+  <div style={{ textAlign: "center", padding: "60px 20px" }} className="fade-in">
+    <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>{icon}</div>
+    <h3 style={{ fontSize: 16, fontWeight: 700, color: COLORS.textMid, marginBottom: 6 }}>{title}</h3>
+    <p style={{ fontSize: 13, color: COLORS.textLight, marginBottom: 20 }}>{subtitle}</p>
+    {action}
+  </div>
+);
+
+const Modal = ({ open, onClose, title, children, wide }) => {
+  if (!open) return null;
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      display: "flex", alignItems: "flex-start", justifyContent: "center",
+      paddingTop: 40, background: "rgba(0,0,0,0.45)",
+    }} onClick={onClose}>
+      <div style={{
+        background: COLORS.white, borderRadius: 12, width: wide ? "90%" : 640,
+        maxWidth: wide ? 1100 : 640, maxHeight: "85vh", overflow: "auto",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+      }} onClick={e => e.stopPropagation()} className="fade-in">
+        <div style={{
+          padding: "16px 24px", borderBottom: `1px solid ${COLORS.border}`,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          position: "sticky", top: 0, background: COLORS.white, zIndex: 2, borderRadius: "12px 12px 0 0",
+        }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: COLORS.primary }}>{title}</h2>
+          <button className="btn-ghost" onClick={onClose} style={{ fontSize: 18 }}>✕</button>
+        </div>
+        <div style={{ padding: 24 }}>{children}</div>
+      </div>
+    </div>
+  );
+};
+
+const Tabs = ({ tabs, active, onChange }) => (
+  <div style={{ display: "flex", gap: 0, borderBottom: `2px solid ${COLORS.border}`, marginBottom: 20 }}>
+    {tabs.map(t => (
+      <button key={t.id} onClick={() => onChange(t.id)} style={{
+        padding: "10px 18px", fontSize: 13, fontWeight: active === t.id ? 700 : 500,
+        color: active === t.id ? COLORS.primary : COLORS.textMid,
+        background: "transparent", borderBottom: active === t.id ? `3px solid ${COLORS.primary}` : "3px solid transparent",
+        marginBottom: -2, borderRadius: 0, transition: "all 0.2s",
+      }}>
+        {t.icon && <span style={{ marginRight: 6 }}>{t.icon}</span>}
+        {t.label}
+      </button>
+    ))}
+  </div>
+);
+
+const StatCard = ({ label, value, color, icon }) => (
+  <div style={{
+    background: COLORS.bgCard, borderRadius: 10, padding: "16px 20px",
+    border: `1px solid ${COLORS.border}`, flex: 1, minWidth: 140,
+    display: "flex", alignItems: "center", gap: 14,
+  }}>
+    <div style={{
+      width: 40, height: 40, borderRadius: 8, background: `${color}14`,
+      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+    }}>{icon}</div>
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: COLORS.textLight, textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</div>
+    </div>
+  </div>
+);
+
+// ─── Solicitud Form ───
+const emptySolicitud = () => ({
+  id: genId(),
+  fecha: today(),
+  sede: SEDES[0],
+  tipoDoc: "DNI",
+  nroDoc: "",
+  cuil: "",
+  pasaporte: "",
+  apellidos: "",
+  nombres: "",
+  programa: "",
+  dedicacion: "Full-Time",
+  anioLectivo: currentYear(),
+  plan: `${currentYear()}00`,
+  turno: "Mañana",
+  vinculo: "A",
+  nacionalidad: "Argentina",
+  fechaNacimiento: "",
+  sexo: "",
+  generoAutopercibido: "",
+  paisNacimiento: "Argentina",
+  // Contacto
+  telParticular: "",
+  telTransitorio: "",
+  celular: "",
+  email1: "",
+  email2: "",
+  emailLaboral: "",
+  // Domicilio permanente
+  domCalle: "",
+  domNumero: "",
+  domPiso: "",
+  domDepto: "",
+  domLocalidad: "",
+  domCP: "",
+  domProvincia: "",
+  domPais: "Argentina",
+  // Domicilio transitorio
+  domTCalle: "",
+  domTNumero: "",
+  domTPiso: "",
+  domTDepto: "",
+  domTLocalidad: "",
+  domTCP: "",
+  domTProvincia: "",
+  domTPais: "",
+  // Familia
+  fam1Parentesco: "",
+  fam1Vive: "",
+  fam1Apellidos: "",
+  fam1Nombres: "",
+  fam1Domicilio: "",
+  fam1Ocupacion: "",
+  fam1Educacion: "",
+  fam1EdCompleta: false,
+  fam2Parentesco: "",
+  fam2Vive: "",
+  fam2Apellidos: "",
+  fam2Nombres: "",
+  fam2Domicilio: "",
+  fam2Ocupacion: "",
+  fam2Educacion: "",
+  fam2EdCompleta: false,
+  // Educacion
+  eduNivel: "",
+  eduCarrera: "",
+  eduTitulo: "",
+  eduEstablecimiento: "",
+  eduDesde: "",
+  eduHasta: "",
+  // Idiomas
+  capacidadIngles: "",
+  // Responsable de pago
+  rpApellidos: "",
+  rpNombres: "",
+  rpTelFijo: "",
+  rpCelular: "",
+  rpEmail: "",
+  // Otros
+  actividades: "",
+  observaciones: "",
+  premios: "",
+  // Admisión
+  resultadoAdmision: "Pendiente",
+  metodoAdmision: "",
+  fechaAdmision: "",
+  calificacionExamen: "",
+  calificacionAntecedentes: "",
+  calificacionEntrevista: "",
+  notaGlobal: "",
+  notaLectoComprension: "",
+  notaMatematica: "",
+  periodoIngreso: "1º Semestre",
+  obsAdmision: "",
+  // Entrevista
+  fechaEntrevista: "",
+  entrevistaRealizada: false,
+  // Documentación
+  docsEntregados: [],
+  docsFaltantes: [],
+  // Pago
+  pagado: false,
+});
+
+const SolicitudForm = ({ solicitud, onChange, onSave, onCancel }) => {
+  const [tab, setTab] = useState("personal");
+  const s = solicitud;
+  const set = (field, val) => onChange({ ...s, [field]: val });
+
+  const formTabs = [
+    { id: "personal", label: "Datos Personales", icon: "👤" },
+    { id: "contacto", label: "Contacto", icon: "📞" },
+    { id: "domicilio", label: "Domicilio", icon: "🏠" },
+    { id: "familia", label: "Familia", icon: "👨‍👩‍👧" },
+    { id: "educacion", label: "Educación", icon: "🎓" },
+    { id: "admision", label: "Admisión", icon: "📋" },
+    { id: "docs", label: "Documentación", icon: "📄" },
+    { id: "pago", label: "Pago y Becas", icon: "💳" },
+  ];
+
+  const grid = (cols = 3) => ({ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 14 });
+
+  return (
+    <div>
+      <Tabs tabs={formTabs} active={tab} onChange={setTab} />
+
+      {tab === "personal" && (
+        <div className="fade-in">
+          <Section title="Solicitud" icon="📝">
+            <div style={grid(4)}>
+              <Field label="Nº Solicitud"><input value={s.id.slice(0, 6).toUpperCase()} disabled style={{ background: "#f5f5f5" }} /></Field>
+              <Field label="Fecha"><input type="date" value={s.fecha} onChange={e => set("fecha", e.target.value)} /></Field>
+              <Field label="Sede" span={2}><select value={s.sede} onChange={e => set("sede", e.target.value)}>{SEDES.map(x => <option key={x}>{x}</option>)}</select></Field>
+            </div>
+          </Section>
+
+          <Section title="Identificación" icon="🪪">
+            <div style={grid(4)}>
+              <Field label="Tipo Doc." required><select value={s.tipoDoc} onChange={e => set("tipoDoc", e.target.value)}>{TIPOS_DOC.map(x => <option key={x}>{x}</option>)}</select></Field>
+              <Field label="Nº Documento" required><input value={s.nroDoc} onChange={e => set("nroDoc", e.target.value)} placeholder="12345678" /></Field>
+              <Field label="CUIL"><input value={s.cuil} onChange={e => set("cuil", e.target.value)} placeholder="20-12345678-0" /></Field>
+              <Field label="Nº Pasaporte"><input value={s.pasaporte} onChange={e => set("pasaporte", e.target.value)} /></Field>
+            </div>
+            <div style={{ ...grid(2), marginTop: 14 }}>
+              <Field label="Apellidos" required><input value={s.apellidos} onChange={e => set("apellidos", e.target.value)} /></Field>
+              <Field label="Nombres" required><input value={s.nombres} onChange={e => set("nombres", e.target.value)} /></Field>
+            </div>
+          </Section>
+
+          <Section title="Programa Académico" icon="📚">
+            <div style={grid(4)}>
+              <Field label="Programa" required span={2}>
+                <select value={s.programa} onChange={e => set("programa", e.target.value)}>
+                  <option value="">— Seleccionar —</option>
+                  {PROGRAMAS.map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.nombre}</option>)}
+                </select>
+              </Field>
+              <Field label="Dedicación"><select value={s.dedicacion} onChange={e => set("dedicacion", e.target.value)}>{DEDICACIONES.map(x => <option key={x}>{x}</option>)}</select></Field>
+              <Field label="Vínculo"><select value={s.vinculo} onChange={e => set("vinculo", e.target.value)}>{VINCULOS.map(x => <option key={x}>{x}</option>)}</select></Field>
+              <Field label="Año Lectivo"><input type="number" value={s.anioLectivo} onChange={e => set("anioLectivo", e.target.value)} /></Field>
+              <Field label="Plan"><input value={s.plan} onChange={e => set("plan", e.target.value)} /></Field>
+              <Field label="Turno"><select value={s.turno} onChange={e => set("turno", e.target.value)}>{TURNOS.map(x => <option key={x}>{x}</option>)}</select></Field>
+            </div>
+          </Section>
+
+          <Section title="Datos Personales" icon="👤">
+            <div style={grid(4)}>
+              <Field label="Nacionalidad"><select value={s.nacionalidad} onChange={e => set("nacionalidad", e.target.value)}>{NACIONALIDADES.map(x => <option key={x}>{x}</option>)}</select></Field>
+              <Field label="Fecha Nacimiento"><input type="date" value={s.fechaNacimiento} onChange={e => set("fechaNacimiento", e.target.value)} /></Field>
+              <Field label="Sexo"><select value={s.sexo} onChange={e => set("sexo", e.target.value)}><option value="">—</option><option>Masculino</option><option>Femenino</option><option>Otro</option></select></Field>
+              <Field label="Género Autopercibido"><input value={s.generoAutopercibido} onChange={e => set("generoAutopercibido", e.target.value)} /></Field>
+              <Field label="País de Nacimiento"><select value={s.paisNacimiento} onChange={e => set("paisNacimiento", e.target.value)}>{NACIONALIDADES.map(x => <option key={x}>{x}</option>)}</select></Field>
+            </div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "contacto" && (
+        <div className="fade-in">
+          <Section title="Teléfonos" icon="📞">
+            <div style={grid(3)}>
+              <Field label="Tel. Particular"><input value={s.telParticular} onChange={e => set("telParticular", e.target.value)} /></Field>
+              <Field label="Tel. Transitorio"><input value={s.telTransitorio} onChange={e => set("telTransitorio", e.target.value)} /></Field>
+              <Field label="Celular"><input value={s.celular} onChange={e => set("celular", e.target.value)} /></Field>
+            </div>
+          </Section>
+          <Section title="Emails" icon="✉️">
+            <div style={grid(3)}>
+              <Field label="Email particular 1"><input type="email" value={s.email1} onChange={e => set("email1", e.target.value)} /></Field>
+              <Field label="Email particular 2"><input type="email" value={s.email2} onChange={e => set("email2", e.target.value)} /></Field>
+              <Field label="Email laboral"><input type="email" value={s.emailLaboral} onChange={e => set("emailLaboral", e.target.value)} /></Field>
+            </div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "domicilio" && (
+        <div className="fade-in">
+          <Section title="Domicilio Particular Permanente" icon="🏠">
+            <div style={grid(4)}>
+              <Field label="Calle" span={2}><input value={s.domCalle} onChange={e => set("domCalle", e.target.value)} /></Field>
+              <Field label="Nº"><input value={s.domNumero} onChange={e => set("domNumero", e.target.value)} /></Field>
+              <Field label="Piso"><input value={s.domPiso} onChange={e => set("domPiso", e.target.value)} /></Field>
+              <Field label="Depto"><input value={s.domDepto} onChange={e => set("domDepto", e.target.value)} /></Field>
+              <Field label="Localidad"><input value={s.domLocalidad} onChange={e => set("domLocalidad", e.target.value)} /></Field>
+              <Field label="C.P."><input value={s.domCP} onChange={e => set("domCP", e.target.value)} /></Field>
+              <Field label="Provincia"><select value={s.domProvincia} onChange={e => set("domProvincia", e.target.value)}><option value="">—</option>{PROVINCIAS.map(x => <option key={x}>{x}</option>)}</select></Field>
+              <Field label="País"><select value={s.domPais} onChange={e => set("domPais", e.target.value)}>{NACIONALIDADES.map(x => <option key={x}>{x}</option>)}</select></Field>
+            </div>
+          </Section>
+          <Section title="Domicilio Transitorio" icon="📍">
+            <div style={grid(4)}>
+              <Field label="Calle" span={2}><input value={s.domTCalle} onChange={e => set("domTCalle", e.target.value)} /></Field>
+              <Field label="Nº"><input value={s.domTNumero} onChange={e => set("domTNumero", e.target.value)} /></Field>
+              <Field label="Piso"><input value={s.domTPiso} onChange={e => set("domTPiso", e.target.value)} /></Field>
+              <Field label="Depto"><input value={s.domTDepto} onChange={e => set("domTDepto", e.target.value)} /></Field>
+              <Field label="Localidad"><input value={s.domTLocalidad} onChange={e => set("domTLocalidad", e.target.value)} /></Field>
+              <Field label="C.P."><input value={s.domTCP} onChange={e => set("domTCP", e.target.value)} /></Field>
+              <Field label="Provincia"><select value={s.domTProvincia} onChange={e => set("domTProvincia", e.target.value)}><option value="">—</option>{PROVINCIAS.map(x => <option key={x}>{x}</option>)}</select></Field>
+              <Field label="País"><select value={s.domTPais} onChange={e => set("domTPais", e.target.value)}><option value="">—</option>{NACIONALIDADES.map(x => <option key={x}>{x}</option>)}</select></Field>
+            </div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "familia" && (
+        <div className="fade-in">
+          {[1, 2].map(n => (
+            <Section key={n} title={`Familiar ${n}`} icon="👤">
+              <div style={grid(3)}>
+                <Field label="Parentesco"><select value={s[`fam${n}Parentesco`]} onChange={e => set(`fam${n}Parentesco`, e.target.value)}><option value="">—</option>{PARENTESCOS.map(x => <option key={x}>{x}</option>)}</select></Field>
+                <Field label="Vive?"><select value={s[`fam${n}Vive`]} onChange={e => set(`fam${n}Vive`, e.target.value)}><option value="">—</option><option>Sí</option><option>No</option></select></Field>
+                <Field label="Educación Alcanzada"><select value={s[`fam${n}Educacion`]} onChange={e => set(`fam${n}Educacion`, e.target.value)}><option value="">—</option>{NIVELES_EDUCACION.map(x => <option key={x}>{x}</option>)}</select></Field>
+                <Field label="Apellidos"><input value={s[`fam${n}Apellidos`]} onChange={e => set(`fam${n}Apellidos`, e.target.value)} /></Field>
+                <Field label="Nombres"><input value={s[`fam${n}Nombres`]} onChange={e => set(`fam${n}Nombres`, e.target.value)} /></Field>
+                <Field label="Domicilio"><input value={s[`fam${n}Domicilio`]} onChange={e => set(`fam${n}Domicilio`, e.target.value)} /></Field>
+                <Field label="Ocupación" span={2}><input value={s[`fam${n}Ocupacion`]} onChange={e => set(`fam${n}Ocupacion`, e.target.value)} /></Field>
+                <Field label="Ed. Completa?">
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
+                    <input type="checkbox" checked={s[`fam${n}EdCompleta`]} onChange={e => set(`fam${n}EdCompleta`, e.target.checked)} style={{ width: "auto" }} />
+                    Sí
+                  </label>
+                </Field>
+              </div>
+            </Section>
+          ))}
+        </div>
+      )}
+
+      {tab === "educacion" && (
+        <div className="fade-in">
+          <Section title="Educación Previa" icon="🎓">
+            <div style={grid(3)}>
+              <Field label="Nivel"><select value={s.eduNivel} onChange={e => set("eduNivel", e.target.value)}><option value="">—</option>{NIVELES_EDUCACION.map(x => <option key={x}>{x}</option>)}</select></Field>
+              <Field label="Desde"><input type="number" value={s.eduDesde} onChange={e => set("eduDesde", e.target.value)} placeholder="2020" /></Field>
+              <Field label="Hasta"><input type="number" value={s.eduHasta} onChange={e => set("eduHasta", e.target.value)} placeholder="2024" /></Field>
+              <Field label="Carrera" span={2}><input value={s.eduCarrera} onChange={e => set("eduCarrera", e.target.value)} /></Field>
+              <Field label="Título"><input value={s.eduTitulo} onChange={e => set("eduTitulo", e.target.value)} /></Field>
+              <Field label="Establecimiento" span={3}><input value={s.eduEstablecimiento} onChange={e => set("eduEstablecimiento", e.target.value)} /></Field>
+            </div>
+          </Section>
+          <Section title="Idiomas y Otros" icon="🌐">
+            <div style={grid(3)}>
+              <Field label="Capacidad de Inglés"><select value={s.capacidadIngles} onChange={e => set("capacidadIngles", e.target.value)}><option value="">—</option>{CAPACIDAD_INGLES.map(x => <option key={x}>{x}</option>)}</select></Field>
+              <Field label="Premios"><input value={s.premios} onChange={e => set("premios", e.target.value)} /></Field>
+              <Field label="Actividades"><input value={s.actividades} onChange={e => set("actividades", e.target.value)} /></Field>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <Field label="Observaciones"><textarea value={s.observaciones} onChange={e => set("observaciones", e.target.value)} /></Field>
+            </div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "admision" && (
+        <div className="fade-in">
+          <Section title="Resultado de Admisión" icon="📋">
+            <div style={grid(3)}>
+              <Field label="Resultado" required>
+                <select value={s.resultadoAdmision} onChange={e => set("resultadoAdmision", e.target.value)}
+                  style={{ fontWeight: 600, color: s.resultadoAdmision === "Admitido" ? COLORS.success : s.resultadoAdmision === "No Admitido" ? COLORS.danger : COLORS.textDark }}>
+                  {ESTADOS_ADMISION.map(x => <option key={x}>{x}</option>)}
+                </select>
+              </Field>
+              <Field label="Método de Admisión"><input value={s.metodoAdmision} onChange={e => set("metodoAdmision", e.target.value)} placeholder="Ponderación" /></Field>
+              <Field label="Fecha de Admisión"><input type="date" value={s.fechaAdmision} onChange={e => set("fechaAdmision", e.target.value)} /></Field>
+              <Field label="Período de Ingreso"><select value={s.periodoIngreso} onChange={e => set("periodoIngreso", e.target.value)}>{PERIODOS.map(x => <option key={x}>{x}</option>)}</select></Field>
+            </div>
+          </Section>
+          <Section title="Calificaciones" icon="📊">
+            <div style={grid(3)}>
+              <Field label="Calif. Examen"><input type="number" value={s.calificacionExamen} onChange={e => set("calificacionExamen", e.target.value)} /></Field>
+              <Field label="Calif. Antecedentes"><input type="number" value={s.calificacionAntecedentes} onChange={e => set("calificacionAntecedentes", e.target.value)} /></Field>
+              <Field label="Calif. Entrevista"><input type="number" value={s.calificacionEntrevista} onChange={e => set("calificacionEntrevista", e.target.value)} /></Field>
+              <Field label="Resultado Global"><input type="number" value={s.notaGlobal} onChange={e => set("notaGlobal", e.target.value)} /></Field>
+              <Field label="Result. Lectocomprensión"><input type="number" value={s.notaLectoComprension} onChange={e => set("notaLectoComprension", e.target.value)} /></Field>
+              <Field label="Result. Matemática"><input type="number" value={s.notaMatematica} onChange={e => set("notaMatematica", e.target.value)} /></Field>
+            </div>
+          </Section>
+          <Section title="Entrevista" icon="🗓">
+            <div style={grid(3)}>
+              <Field label="Fecha Entrevista"><input type="date" value={s.fechaEntrevista} onChange={e => set("fechaEntrevista", e.target.value)} /></Field>
+              <Field label="Entrevista Realizada">
+                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, paddingTop: 6 }}>
+                  <input type="checkbox" checked={s.entrevistaRealizada} onChange={e => set("entrevistaRealizada", e.target.checked)} style={{ width: "auto" }} />
+                  Sí
+                </label>
+              </Field>
+            </div>
+          </Section>
+          <div style={{ marginTop: 14 }}>
+            <Field label="Observaciones de Admisión"><textarea value={s.obsAdmision} onChange={e => set("obsAdmision", e.target.value)} /></Field>
+          </div>
+        </div>
+      )}
+
+      {tab === "docs" && (
+        <div className="fade-in">
+          <Section title="Documentación Presentada" icon="📄">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+              {DOCS_PRESENTAR.map(doc => (
+                <label key={doc} style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+                  background: s.docsEntregados.includes(doc) ? COLORS.successBg : "#fafafa",
+                  borderRadius: 6, cursor: "pointer", fontSize: 13,
+                  border: `1px solid ${s.docsEntregados.includes(doc) ? COLORS.success + "40" : COLORS.border}`,
+                }}>
+                  <input type="checkbox" checked={s.docsEntregados.includes(doc)}
+                    onChange={e => {
+                      const docs = e.target.checked
+                        ? [...s.docsEntregados, doc]
+                        : s.docsEntregados.filter(d => d !== doc);
+                      set("docsEntregados", docs);
+                    }} style={{ width: "auto" }} />
+                  {doc}
+                </label>
+              ))}
+            </div>
+          </Section>
+          <Section title="Documentación Faltante" icon="⚠️">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {DOCS_PRESENTAR.filter(d => !s.docsEntregados.includes(d)).map(doc => (
+                <span key={doc} style={{
+                  padding: "4px 12px", borderRadius: 100, fontSize: 12, fontWeight: 600,
+                  background: COLORS.warningBg, color: COLORS.warning,
+                }}>{doc}</span>
+              ))}
+              {DOCS_PRESENTAR.filter(d => !s.docsEntregados.includes(d)).length === 0 && (
+                <span style={{ fontSize: 13, color: COLORS.success, fontWeight: 600 }}>✓ Toda la documentación fue presentada</span>
+              )}
+            </div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "pago" && (
+        <div className="fade-in">
+          <Section title="Responsable de Pago" icon="💳">
+            <div style={grid(3)}>
+              <Field label="Apellidos"><input value={s.rpApellidos} onChange={e => set("rpApellidos", e.target.value)} /></Field>
+              <Field label="Nombres"><input value={s.rpNombres} onChange={e => set("rpNombres", e.target.value)} /></Field>
+              <Field label="Tel. Fijo"><input value={s.rpTelFijo} onChange={e => set("rpTelFijo", e.target.value)} /></Field>
+              <Field label="Celular"><input value={s.rpCelular} onChange={e => set("rpCelular", e.target.value)} /></Field>
+              <Field label="Email" span={2}><input type="email" value={s.rpEmail} onChange={e => set("rpEmail", e.target.value)} /></Field>
+            </div>
+          </Section>
+          <Section title="Estado de Pago" icon="💰">
+            <label style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "12px 16px",
+              background: s.pagado ? COLORS.successBg : COLORS.warningBg,
+              borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600,
+              border: `1px solid ${s.pagado ? COLORS.success + "40" : COLORS.warning + "40"}`,
+              color: s.pagado ? COLORS.success : COLORS.warning,
+            }}>
+              <input type="checkbox" checked={s.pagado} onChange={e => set("pagado", e.target.checked)} style={{ width: "auto" }} />
+              {s.pagado ? "El alumno PAGÓ la reserva" : "El alumno NO PAGÓ la reserva"}
+            </label>
+          </Section>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24, paddingTop: 16, borderTop: `1px solid ${COLORS.border}` }}>
+        <button className="btn-secondary" onClick={onCancel}>Cancelar</button>
+        <button className="btn-primary" onClick={onSave} style={{ padding: "10px 28px" }}>
+          Guardar Solicitud
+        </button>
+      </div>
+    </div>
+  );
+};
+
+
+// ─── Main App ───
+function App() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState("dashboard");
+  const [editingSolicitud, setEditingSolicitud] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterPrograma, setFilterPrograma] = useState("");
+  const [filterEstado, setFilterEstado] = useState("");
+  const [notification, setNotification] = useState(null);
+  const [viewingLegajo, setViewingLegajo] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncCount, setLastSyncCount] = useState(0);
+
+  useEffect(() => {
+    loadData().then(d => {
+      setData(d);
+      const fromForm = d.solicitudes.filter(s => s._fromForm).length;
+      if (fromForm > 0) setLastSyncCount(fromForm);
+      setLoading(false);
+    });
+  }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    // Reload from API (form submissions go directly to API now)
+    const freshData = await loadData();
+    setData(freshData);
+    const newFromForm = freshData.solicitudes.filter(s => s._fromForm).length;
+    notify(`Datos actualizados — ${newFromForm} solicitud${newFromForm !== 1 ? "es" : ""} desde formulario web`);
+    setSyncing(false);
+  };
+
+  const persist = useCallback(async (newData) => {
+    setData(newData);
+  }, []);
+
+  const reloadData = async () => {
+    const d = await loadData();
+    setData(d);
+    return d;
+  };
+
+  const notify = (msg, type = "success") => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleNewSolicitud = () => {
+    setEditingSolicitud(emptySolicitud());
+    setShowForm(true);
+  };
+
+  const handleEditSolicitud = (sol) => {
+    setEditingSolicitud({ ...sol });
+    setShowForm(true);
+  };
+
+  const handleSaveSolicitud = async () => {
+    const s = editingSolicitud;
+    if (!s.apellidos || !s.nombres || !s.nroDoc || !s.programa) {
+      notify("Completá los campos obligatorios: Apellidos, Nombres, Nº Doc y Programa", "error");
+      return;
+    }
+    const existing = data.solicitudes.findIndex(x => x.id === s.id);
+    try {
+      if (existing >= 0) {
+        await apiUpdate(s);
+      } else {
+        await apiCreate(s);
+      }
+      await reloadData();
+      setShowForm(false);
+      setEditingSolicitud(null);
+      notify(existing >= 0 ? "Solicitud actualizada" : "Solicitud creada");
+    } catch (e) {
+      notify("Error al guardar: " + e.message, "error");
+    }
+  };
+
+  const handleDeleteSolicitud = async (id) => {
+    if (!confirm("¿Eliminar esta solicitud?")) return;
+    try {
+      await apiDelete(id);
+      await reloadData();
+      notify("Solicitud eliminada");
+    } catch (e) {
+      notify("Error al eliminar", "error");
+    }
+  };
+
+  const handleResetData = async () => {
+    if (!confirm("¿Borrar TODOS los datos? Esta acción no se puede deshacer.")) return;
+    for (const s of data.solicitudes) {
+      await apiDelete(s.id);
+    }
+    await reloadData();
+    notify("Datos eliminados");
+  };
+
+  // Inline update for admision grid — optimistic local + debounced API
+  const debounceTimers = useRef({});
+  const inlineUpdate = (sol, field, value) => {
+    const updated = { ...sol, [field]: value };
+    // Optimistic local update
+    setData(prev => ({
+      ...prev,
+      solicitudes: prev.solicitudes.map(x => x.id === sol.id ? updated : x),
+    }));
+    // Debounce API call
+    clearTimeout(debounceTimers.current[sol.id]);
+    debounceTimers.current[sol.id] = setTimeout(() => {
+      apiUpdate(updated).catch(e => console.error("Update error:", e));
+    }, 500);
+  };
+
+  if (loading || !data) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: 16 }}>
+        <div style={{ width: 40, height: 40, border: `3px solid ${COLORS.border}`, borderTopColor: COLORS.primary, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <span style={{ fontSize: 14, color: COLORS.textMid }}>Cargando SIGEU...</span>
+      </div>
+    );
+  }
+
+  const filteredSolicitudes = data.solicitudes.filter(s => {
+    const term = searchTerm.toLowerCase();
+    const matchSearch = !term || s.apellidos.toLowerCase().includes(term) || s.nombres.toLowerCase().includes(term) || s.nroDoc.includes(term);
+    const matchProg = !filterPrograma || s.programa === filterPrograma;
+    const matchEstado = !filterEstado || s.resultadoAdmision === filterEstado;
+    return matchSearch && matchProg && matchEstado;
+  });
+
+  const stats = {
+    total: data.solicitudes.length,
+    admitidos: data.solicitudes.filter(s => s.resultadoAdmision === "Admitido").length,
+    pendientes: data.solicitudes.filter(s => s.resultadoAdmision === "Pendiente").length,
+    noAdmitidos: data.solicitudes.filter(s => s.resultadoAdmision === "No Admitido").length,
+  };
+
+  const navItems = [
+    { id: "dashboard", label: "Dashboard", icon: "📊" },
+    { id: "solicitudes", label: "Solicitudes", icon: "📋" },
+    { id: "admision", label: "Admisión", icon: "✅" },
+    { id: "legajos", label: "Legajos", icon: "📁" },
+    { id: "config", label: "Config", icon: "⚙️" },
+  ];
+
+  return (
+    <div style={{ display: "flex", minHeight: "100vh" }}>
+      <style>{css}</style>
+
+      {/* Sidebar */}
+      <nav style={{
+        width: 220, background: COLORS.primary, color: COLORS.white,
+        display: "flex", flexDirection: "column", position: "fixed",
+        height: "100vh", zIndex: 100,
+      }}>
+        {/* Logo */}
+        <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 8,
+              background: "rgba(255,255,255,0.15)", display: "flex",
+              alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 800, letterSpacing: "0.5px",
+            }}>UC</div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.7, letterSpacing: "1px", textTransform: "uppercase" }}>Universidad del CEMA</div>
+              <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "0.5px" }}>SIGEU</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 10, marginTop: 8, opacity: 0.5, fontWeight: 500 }}>Sistema de Gestión Universitaria</div>
+        </div>
+
+        {/* Nav */}
+        <div style={{ padding: "12px 10px", flex: 1 }}>
+          {navItems.map(item => (
+            <button key={item.id} onClick={() => { setView(item.id); setViewingLegajo(null); }} style={{
+              display: "flex", alignItems: "center", gap: 10, width: "100%",
+              padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+              color: COLORS.white, background: view === item.id ? "rgba(255,255,255,0.18)" : "transparent",
+              textAlign: "left", marginBottom: 2, transition: "background 0.15s",
+            }}>
+              <span style={{ fontSize: 15 }}>{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.12)", fontSize: 10, opacity: 0.4 }}>
+          Admisiones de Grado<br />v2.0 — {currentYear()}
+        </div>
+      </nav>
+
+      {/* Main */}
+      <main style={{ flex: 1, marginLeft: 220, padding: "24px 32px" }}>
+        {/* Notification */}
+        {notification && (
+          <div style={{
+            position: "fixed", top: 20, right: 20, zIndex: 2000,
+            padding: "12px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            background: notification.type === "error" ? COLORS.dangerBg : COLORS.successBg,
+            color: notification.type === "error" ? COLORS.danger : COLORS.success,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          }} className="fade-in">
+            {notification.type === "error" ? "✕" : "✓"} {notification.msg}
+          </div>
+        )}
+
+        {/* Dashboard */}
+        {view === "dashboard" && (
+          <div className="fade-in">
+            <div style={{ marginBottom: 28 }}>
+              <h1 style={{ fontSize: 24, fontWeight: 800, color: COLORS.textDark }}>Dashboard de Admisiones</h1>
+              <p style={{ fontSize: 13, color: COLORS.textLight, marginTop: 4 }}>Año lectivo {currentYear()} — Departamento de Admisiones de Grado</p>
+            </div>
+
+            <div style={{ display: "flex", gap: 14, marginBottom: 28, flexWrap: "wrap" }}>
+              <StatCard label="Total Solicitudes" value={stats.total} color={COLORS.primary} icon="📋" />
+              <StatCard label="Admitidos" value={stats.admitidos} color={COLORS.success} icon="✅" />
+              <StatCard label="Pendientes" value={stats.pendientes} color={COLORS.warning} icon="⏳" />
+              <StatCard label="No Admitidos" value={stats.noAdmitidos} color={COLORS.danger} icon="✕" />
+            </div>
+
+            {/* Sync notification on load */}
+            {lastSyncCount > 0 && (
+              <Card style={{ marginBottom: 14, background: COLORS.successBg, border: `1px solid ${COLORS.success}30` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>🔄</span>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.success }}>
+                      {lastSyncCount} solicitud{lastSyncCount > 1 ? "es" : ""} nueva{lastSyncCount > 1 ? "s" : ""} sincronizada{lastSyncCount > 1 ? "s" : ""}
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.success, opacity: 0.8 }}>
+                      Se importaron automáticamente desde el formulario de admisión web
+                    </div>
+                  </div>
+                  <button className="btn-ghost btn-sm" onClick={() => setLastSyncCount(0)} style={{ marginLeft: "auto" }}>✕</button>
+                </div>
+              </Card>
+            )}
+
+            {/* Quick actions */}
+            <Card>
+              <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: COLORS.textDark }}>Acciones Rápidas</h3>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button className="btn-primary" onClick={handleNewSolicitud}>+ Nueva Solicitud</button>
+                <button className="btn-secondary" onClick={() => setView("solicitudes")}>Ver Solicitudes</button>
+                <button className="btn-secondary" onClick={() => setView("admision")}>Proceso de Admisión</button>
+                <button className="btn-secondary" onClick={handleSync} disabled={syncing} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  opacity: syncing ? 0.6 : 1,
+                }}>
+                  <span style={{ display: "inline-block", animation: syncing ? "spin 1s linear infinite" : "none" }}>🔄</span>
+                  {syncing ? "Sincronizando..." : "Sincronizar Formularios"}
+                </button>
+              </div>
+            </Card>
+
+            {/* Recent solicitudes */}
+            {data.solicitudes.length > 0 && (
+              <Card style={{ marginTop: 20 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: COLORS.textDark }}>Últimas Solicitudes</h3>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${COLORS.border}` }}>
+                        {["Apellidos", "Nombres", "Documento", "Programa", "Estado", "Fecha"].map(h => (
+                          <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 11, fontWeight: 700, color: COLORS.textLight, textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.solicitudes.slice(-5).reverse().map(s => (
+                        <tr key={s.id} style={{ borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer" }}
+                          onClick={() => handleEditSolicitud(s)}>
+                          <td style={{ padding: "10px 12px", fontWeight: 600 }}>{s.apellidos}</td>
+                          <td style={{ padding: "10px 12px" }}>{s.nombres}</td>
+                          <td style={{ padding: "10px 12px", fontFamily: "monospace" }}>{s.nroDoc}</td>
+                          <td style={{ padding: "10px 12px" }}><span style={{ fontWeight: 600, color: COLORS.primary }}>{s.programa}</span></td>
+                          <td style={{ padding: "10px 12px" }}><Badge status={s.resultadoAdmision} /></td>
+                          <td style={{ padding: "10px 12px", color: COLORS.textLight }}>{s.fecha}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {data.solicitudes.length === 0 && (
+              <Card style={{ marginTop: 20 }}>
+                <EmptyState
+                  icon="📝"
+                  title="Sin solicitudes todavía"
+                  subtitle="Creá la primera solicitud de admisión para comenzar"
+                  action={<button className="btn-primary" onClick={handleNewSolicitud}>+ Nueva Solicitud</button>}
+                />
+              </Card>
+            )}
+
+            {/* Programs breakdown */}
+            {data.solicitudes.length > 0 && (
+              <Card style={{ marginTop: 20 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: COLORS.textDark }}>Solicitudes por Programa</h3>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {PROGRAMAS.filter(p => data.solicitudes.some(s => s.programa === p.codigo)).map(p => {
+                    const count = data.solicitudes.filter(s => s.programa === p.codigo).length;
+                    return (
+                      <div key={p.codigo} style={{
+                        padding: "8px 16px", borderRadius: 8, background: COLORS.primary + "0a",
+                        border: `1px solid ${COLORS.primary}20`, display: "flex", alignItems: "center", gap: 8,
+                      }}>
+                        <span style={{ fontWeight: 700, color: COLORS.primary, fontSize: 16 }}>{count}</span>
+                        <span style={{ fontSize: 12, color: COLORS.textMid }}>{p.codigo}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* Solicitudes list */}
+        {view === "solicitudes" && (
+          <div className="fade-in">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div>
+                <h1 style={{ fontSize: 24, fontWeight: 800 }}>Solicitudes de Admisión</h1>
+                <p style={{ fontSize: 13, color: COLORS.textLight, marginTop: 4 }}>{filteredSolicitudes.length} registro{filteredSolicitudes.length !== 1 ? "s" : ""}</p>
+              </div>
+              <button className="btn-primary" onClick={handleNewSolicitud} style={{ padding: "10px 20px" }}>
+                + Nueva Solicitud
+              </button>
+            </div>
+
+            {/* Filters */}
+            <Card style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <input placeholder="Buscar por apellido, nombre o documento..."
+                    value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                    style={{ padding: "10px 14px" }} />
+                </div>
+                <select value={filterPrograma} onChange={e => setFilterPrograma(e.target.value)} style={{ width: 180 }}>
+                  <option value="">Todos los programas</option>
+                  {PROGRAMAS.map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.nombre}</option>)}
+                </select>
+                <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)} style={{ width: 160 }}>
+                  <option value="">Todos los estados</option>
+                  {ESTADOS_ADMISION.map(e => <option key={e}>{e}</option>)}
+                </select>
+                {(searchTerm || filterPrograma || filterEstado) && (
+                  <button className="btn-ghost btn-sm" onClick={() => { setSearchTerm(""); setFilterPrograma(""); setFilterEstado(""); }}>Limpiar</button>
+                )}
+              </div>
+            </Card>
+
+            {/* Table */}
+            <Card>
+              {filteredSolicitudes.length === 0 ? (
+                <EmptyState icon="🔍" title="Sin resultados" subtitle="No se encontraron solicitudes con estos filtros" />
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${COLORS.border}` }}>
+                        {["Apellidos", "Nombres", "Documento", "Programa", "Plan", "Dedicación", "Estado", "Período", "Acciones"].map(h => (
+                          <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 11, fontWeight: 700, color: COLORS.textLight, textTransform: "uppercase", letterSpacing: "0.5px", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSolicitudes.map(s => (
+                        <tr key={s.id} style={{ borderBottom: `1px solid ${COLORS.border}`, transition: "background 0.1s" }}
+                          onMouseEnter={e => e.currentTarget.style.background = "#fafafa"}
+                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                          <td style={{ padding: "10px 12px", fontWeight: 600 }}>
+                            {s.apellidos}
+                            {s._fromForm && <span title="Ingresado desde formulario web" style={{ marginLeft: 6, fontSize: 10, background: COLORS.infoBg, color: COLORS.info, padding: "1px 6px", borderRadius: 100, fontWeight: 700 }}>WEB</span>}
+                          </td>
+                          <td style={{ padding: "10px 12px" }}>{s.nombres}</td>
+                          <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12 }}>{s.nroDoc}</td>
+                          <td style={{ padding: "10px 12px" }}><span style={{ fontWeight: 600, color: COLORS.primary }}>{s.programa}</span></td>
+                          <td style={{ padding: "10px 12px", color: COLORS.textLight }}>{s.plan}</td>
+                          <td style={{ padding: "10px 12px" }}>{s.dedicacion}</td>
+                          <td style={{ padding: "10px 12px" }}><Badge status={s.resultadoAdmision} /></td>
+                          <td style={{ padding: "10px 12px", fontSize: 12 }}>{s.periodoIngreso}</td>
+                          <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                            <button className="btn-ghost btn-sm" onClick={() => handleEditSolicitud(s)} title="Editar">✏️</button>
+                            <button className="btn-ghost btn-sm" onClick={() => handleDeleteSolicitud(s.id)} title="Eliminar">🗑️</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {/* Admision view - quick status management */}
+        {view === "admision" && (
+          <div className="fade-in">
+            <div style={{ marginBottom: 20 }}>
+              <h1 style={{ fontSize: 24, fontWeight: 800 }}>Proceso de Admisión</h1>
+              <p style={{ fontSize: 13, color: COLORS.textLight, marginTop: 4 }}>Gestión rápida de estados y confirmación</p>
+            </div>
+
+            {/* Filter by program */}
+            <Card style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <select value={filterPrograma} onChange={e => setFilterPrograma(e.target.value)} style={{ width: 300 }}>
+                  <option value="">Todos los programas</option>
+                  {PROGRAMAS.map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.nombre}</option>)}
+                </select>
+                <span style={{ fontSize: 13, color: COLORS.textLight }}>
+                  {filteredSolicitudes.length} postulante{filteredSolicitudes.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+            </Card>
+
+            <Card>
+              {filteredSolicitudes.length === 0 ? (
+                <EmptyState icon="📋" title="Sin postulantes" subtitle="No hay solicitudes para este programa" />
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${COLORS.border}` }}>
+                        {["Postulante", "Documento", "Vínculo", "Dedicación", "Entrev.", "Nota Entr.", "Nota Exam.", "Nota Ant.", "R. Global", "R. Lecto", "R. Matem.", "Estado", "Pago"].map(h => (
+                          <th key={h} style={{ textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 700, color: COLORS.textLight, textTransform: "uppercase", letterSpacing: "0.4px", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSolicitudes.map(s => (
+                        <tr key={s.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                          <td style={{ padding: "8px 10px", fontWeight: 600, whiteSpace: "nowrap" }}>{s.apellidos}, {s.nombres}</td>
+                          <td style={{ padding: "8px 10px", fontFamily: "monospace", fontSize: 12 }}>{s.nroDoc}</td>
+                          <td style={{ padding: "8px 10px" }}>{s.vinculo}</td>
+                          <td style={{ padding: "8px 10px", fontSize: 12 }}>{s.dedicacion}</td>
+                          <td style={{ padding: "8px 10px", textAlign: "center" }}>{s.entrevistaRealizada ? "✓" : "—"}</td>
+                          <td style={{ padding: "8px 10px" }}>
+                            <input type="number" value={s.calificacionEntrevista} style={{ width: 50, padding: 4, fontSize: 12, textAlign: "center" }}
+                              onChange={e => inlineUpdate(s, "calificacionEntrevista", e.target.value)} />
+                          </td>
+                          <td style={{ padding: "8px 10px" }}>
+                            <input type="number" value={s.calificacionExamen} style={{ width: 50, padding: 4, fontSize: 12, textAlign: "center" }}
+                              onChange={e => inlineUpdate(s, "calificacionExamen", e.target.value)} />
+                          </td>
+                          <td style={{ padding: "8px 10px" }}>
+                            <input type="number" value={s.calificacionAntecedentes} style={{ width: 50, padding: 4, fontSize: 12, textAlign: "center" }}
+                              onChange={e => inlineUpdate(s, "calificacionAntecedentes", e.target.value)} />
+                          </td>
+                          <td style={{ padding: "8px 10px" }}>
+                            <input type="number" value={s.notaGlobal} style={{ width: 50, padding: 4, fontSize: 12, textAlign: "center" }}
+                              onChange={e => inlineUpdate(s, "notaGlobal", e.target.value)} />
+                          </td>
+                          <td style={{ padding: "8px 10px" }}>
+                            <input type="number" value={s.notaLectoComprension} style={{ width: 50, padding: 4, fontSize: 12, textAlign: "center" }}
+                              onChange={e => inlineUpdate(s, "notaLectoComprension", e.target.value)} />
+                          </td>
+                          <td style={{ padding: "8px 10px" }}>
+                            <input type="number" value={s.notaMatematica} style={{ width: 50, padding: 4, fontSize: 12, textAlign: "center" }}
+                              onChange={e => inlineUpdate(s, "notaMatematica", e.target.value)} />
+                          </td>
+                          <td style={{ padding: "8px 10px" }}>
+                            <select value={s.resultadoAdmision} style={{
+                              width: 120, padding: 4, fontSize: 11, fontWeight: 600,
+                              color: s.resultadoAdmision === "Admitido" ? COLORS.success : s.resultadoAdmision === "No Admitido" ? COLORS.danger : COLORS.textDark,
+                            }}
+                              onChange={e => inlineUpdate(s, "resultadoAdmision", e.target.value)}>
+                              {ESTADOS_ADMISION.map(e => <option key={e}>{e}</option>)}
+                            </select>
+                          </td>
+                          <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                            <span style={{
+                              display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+                              background: s.pagado ? COLORS.success : COLORS.danger,
+                            }} title={s.pagado ? "Pagó" : "No pagó"} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {/* Legajos - read-only view */}
+        {view === "legajos" && !viewingLegajo && (
+          <div className="fade-in">
+            <div style={{ marginBottom: 20 }}>
+              <h1 style={{ fontSize: 24, fontWeight: 800 }}>Legajos</h1>
+              <p style={{ fontSize: 13, color: COLORS.textLight, marginTop: 4 }}>Vista de consulta — solo lectura</p>
+            </div>
+
+            <Card style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <input placeholder="Buscar por apellido, nombre o documento..."
+                    value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                    style={{ padding: "10px 14px" }} />
+                </div>
+                <select value={filterPrograma} onChange={e => setFilterPrograma(e.target.value)} style={{ width: 180 }}>
+                  <option value="">Todos los programas</option>
+                  {PROGRAMAS.map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.nombre}</option>)}
+                </select>
+              </div>
+            </Card>
+
+            <Card>
+              {filteredSolicitudes.length === 0 ? (
+                <EmptyState icon="📁" title="Sin legajos" subtitle="No hay solicitudes registradas aún" />
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+                  {filteredSolicitudes.map(s => {
+                    const prog = PROGRAMAS.find(p => p.codigo === s.programa);
+                    const docsTotal = DOCS_PRESENTAR.length;
+                    const docsOk = s.docsEntregados?.length || 0;
+                    return (
+                      <div key={s.id} onClick={() => setViewingLegajo(s)} style={{
+                        padding: 16, borderRadius: 10, border: `1px solid ${COLORS.border}`,
+                        background: COLORS.bgCard, cursor: "pointer", transition: "all 0.15s",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                      }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = COLORS.primary + "60"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(148,0,40,0.08)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = COLORS.border; e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)"; }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.textDark }}>{s.apellidos}, {s.nombres}</div>
+                            <div style={{ fontSize: 12, color: COLORS.textLight, fontFamily: "monospace", marginTop: 2 }}>DOC {s.nroDoc}</div>
+                          </div>
+                          <Badge status={s.resultadoAdmision} />
+                        </div>
+                        <div style={{ display: "flex", gap: 16, fontSize: 12, color: COLORS.textMid, marginBottom: 10 }}>
+                          <span><strong style={{ color: COLORS.primary }}>{s.programa}</strong> {prog ? `— ${prog.nombre}` : ""}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 12, fontSize: 11, color: COLORS.textLight }}>
+                          <span>{s.dedicacion}</span>
+                          <span>•</span>
+                          <span>{s.periodoIngreso}</span>
+                          <span>•</span>
+                          <span>Docs: {docsOk}/{docsTotal}</span>
+                          <span>•</span>
+                          <span>{s.pagado ? "💰 Pagó" : "⏳ Sin pago"}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {/* Legajo detail - read only */}
+        {view === "legajos" && viewingLegajo && (() => {
+          const s = viewingLegajo;
+          const prog = PROGRAMAS.find(p => p.codigo === s.programa);
+          const labelStyle = { fontSize: 10, fontWeight: 700, color: COLORS.textLight, textTransform: "uppercase", letterSpacing: "0.5px" };
+          const valueStyle = { fontSize: 13, fontWeight: 500, color: COLORS.textDark, marginTop: 2, minHeight: 18 };
+          const Dato = ({ label, value, span = 1 }) => (
+            <div style={{ gridColumn: `span ${span}` }}>
+              <div style={labelStyle}>{label}</div>
+              <div style={valueStyle}>{value || <span style={{ color: COLORS.textLight, fontStyle: "italic" }}>—</span>}</div>
+            </div>
+          );
+          const grid4 = { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px 20px" };
+          const grid3 = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px 20px" };
+
+          return (
+            <div className="fade-in">
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+                <button className="btn-secondary btn-sm" onClick={() => setViewingLegajo(null)}>← Volver</button>
+                <div>
+                  <h1 style={{ fontSize: 22, fontWeight: 800 }}>{s.apellidos}, {s.nombres}</h1>
+                  <p style={{ fontSize: 12, color: COLORS.textLight }}>Legajo — Vista de consulta</p>
+                </div>
+                <div style={{ marginLeft: "auto" }}><Badge status={s.resultadoAdmision} /></div>
+              </div>
+
+              {/* Header card */}
+              <Card style={{ marginBottom: 16, background: `linear-gradient(135deg, ${COLORS.primary}08 0%, ${COLORS.white} 100%)` }}>
+                <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.primary, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 8 }}>Programa</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.primary }}>{s.programa}</div>
+                    <div style={{ fontSize: 13, color: COLORS.textMid }}>{prog?.nombre}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={labelStyle}>Plan</div>
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>{s.plan}</div>
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Año Lectivo</div>
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>{s.anioLectivo}</div>
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Dedicación</div>
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>{s.dedicacion}</div>
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Turno</div>
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>{s.turno}</div>
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Vínculo</div>
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>{s.vinculo}</div>
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Período</div>
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>{s.periodoIngreso}</div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {/* Identificación */}
+                <Card>
+                  <Section title="Identificación" icon="🪪">
+                    <div style={grid3}>
+                      <Dato label="Tipo Doc." value={s.tipoDoc} />
+                      <Dato label="Nº Documento" value={s.nroDoc} />
+                      <Dato label="CUIL" value={s.cuil} />
+                      <Dato label="Pasaporte" value={s.pasaporte} />
+                      <Dato label="Sede" value={s.sede} />
+                      <Dato label="Fecha Solicitud" value={s.fecha} />
+                    </div>
+                  </Section>
+                </Card>
+
+                {/* Datos Personales */}
+                <Card>
+                  <Section title="Datos Personales" icon="👤">
+                    <div style={grid3}>
+                      <Dato label="Nacionalidad" value={s.nacionalidad} />
+                      <Dato label="Fecha Nacimiento" value={s.fechaNacimiento} />
+                      <Dato label="Sexo" value={s.sexo} />
+                      <Dato label="Género Autopercibido" value={s.generoAutopercibido} />
+                      <Dato label="País de Nacimiento" value={s.paisNacimiento} />
+                    </div>
+                  </Section>
+                </Card>
+
+                {/* Contacto */}
+                <Card>
+                  <Section title="Contacto" icon="📞">
+                    <div style={grid3}>
+                      <Dato label="Tel. Particular" value={s.telParticular} />
+                      <Dato label="Tel. Transitorio" value={s.telTransitorio} />
+                      <Dato label="Celular" value={s.celular} />
+                      <Dato label="Email 1" value={s.email1} />
+                      <Dato label="Email 2" value={s.email2} />
+                      <Dato label="Email Laboral" value={s.emailLaboral} />
+                    </div>
+                  </Section>
+                </Card>
+
+                {/* Domicilio */}
+                <Card>
+                  <Section title="Domicilio Permanente" icon="🏠">
+                    <div style={grid3}>
+                      <Dato label="Calle" value={s.domCalle} span={2} />
+                      <Dato label="Nº" value={s.domNumero} />
+                      <Dato label="Piso" value={s.domPiso} />
+                      <Dato label="Depto" value={s.domDepto} />
+                      <Dato label="Localidad" value={s.domLocalidad} />
+                      <Dato label="C.P." value={s.domCP} />
+                      <Dato label="Provincia" value={s.domProvincia} />
+                      <Dato label="País" value={s.domPais} />
+                    </div>
+                  </Section>
+                  {(s.domTCalle || s.domTLocalidad) && (
+                    <Section title="Domicilio Transitorio" icon="📍">
+                      <div style={grid3}>
+                        <Dato label="Calle" value={s.domTCalle} span={2} />
+                        <Dato label="Nº" value={s.domTNumero} />
+                        <Dato label="Localidad" value={s.domTLocalidad} />
+                        <Dato label="Provincia" value={s.domTProvincia} />
+                        <Dato label="País" value={s.domTPais} />
+                      </div>
+                    </Section>
+                  )}
+                </Card>
+
+                {/* Familia */}
+                <Card>
+                  <Section title="Familia" icon="👨‍👩‍👧">
+                    {[1, 2].map(n => (s[`fam${n}Apellidos`] || s[`fam${n}Parentesco`]) ? (
+                      <div key={n} style={{ marginBottom: n === 1 ? 16 : 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.primary, marginBottom: 8 }}>Familiar {n}</div>
+                        <div style={grid3}>
+                          <Dato label="Parentesco" value={s[`fam${n}Parentesco`]} />
+                          <Dato label="Apellidos" value={s[`fam${n}Apellidos`]} />
+                          <Dato label="Nombres" value={s[`fam${n}Nombres`]} />
+                          <Dato label="Ocupación" value={s[`fam${n}Ocupacion`]} />
+                          <Dato label="Educación" value={s[`fam${n}Educacion`]} />
+                          <Dato label="Vive?" value={s[`fam${n}Vive`]} />
+                        </div>
+                      </div>
+                    ) : null)}
+                    {!s.fam1Apellidos && !s.fam1Parentesco && !s.fam2Apellidos && !s.fam2Parentesco && (
+                      <p style={{ fontSize: 13, color: COLORS.textLight, fontStyle: "italic" }}>Sin datos familiares cargados</p>
+                    )}
+                  </Section>
+                </Card>
+
+                {/* Educación */}
+                <Card>
+                  <Section title="Educación" icon="🎓">
+                    <div style={grid3}>
+                      <Dato label="Nivel" value={s.eduNivel} />
+                      <Dato label="Desde" value={s.eduDesde} />
+                      <Dato label="Hasta" value={s.eduHasta} />
+                      <Dato label="Carrera" value={s.eduCarrera} span={2} />
+                      <Dato label="Título" value={s.eduTitulo} />
+                      <Dato label="Establecimiento" value={s.eduEstablecimiento} span={3} />
+                    </div>
+                  </Section>
+                  <Section title="Idiomas y Otros" icon="🌐">
+                    <div style={grid3}>
+                      <Dato label="Capacidad de Inglés" value={s.capacidadIngles} />
+                      <Dato label="Premios" value={s.premios} />
+                      <Dato label="Actividades" value={s.actividades} />
+                    </div>
+                    {s.observaciones && <div style={{ marginTop: 10 }}><Dato label="Observaciones" value={s.observaciones} span={3} /></div>}
+                  </Section>
+                </Card>
+
+                {/* Admisión */}
+                <Card style={{ border: `2px solid ${s.resultadoAdmision === "Admitido" ? COLORS.success + "40" : s.resultadoAdmision === "No Admitido" ? COLORS.danger + "40" : COLORS.border}` }}>
+                  <Section title="Resultado de Admisión" icon="📋">
+                    <div style={grid3}>
+                      <Dato label="Resultado" value={s.resultadoAdmision} />
+                      <Dato label="Método" value={s.metodoAdmision} />
+                      <Dato label="Fecha de Admisión" value={s.fechaAdmision} />
+                    </div>
+                    <div style={{ ...grid3, marginTop: 14, padding: "12px 14px", background: "#fafafa", borderRadius: 8 }}>
+                      <Dato label="Calif. Examen" value={s.calificacionExamen} />
+                      <Dato label="Calif. Antecedentes" value={s.calificacionAntecedentes} />
+                      <Dato label="Calif. Entrevista" value={s.calificacionEntrevista} />
+                      <Dato label="Resultado Global" value={s.notaGlobal} />
+                      <Dato label="R. Lectocomprensión" value={s.notaLectoComprension} />
+                      <Dato label="R. Matemática" value={s.notaMatematica} />
+                    </div>
+                  </Section>
+                  <Section title="Entrevista" icon="🗓">
+                    <div style={grid3}>
+                      <Dato label="Fecha Entrevista" value={s.fechaEntrevista} />
+                      <Dato label="Realizada" value={s.entrevistaRealizada ? "Sí" : "No"} />
+                    </div>
+                  </Section>
+                </Card>
+
+                {/* Documentación */}
+                <Card>
+                  <Section title="Documentación" icon="📄">
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      {DOCS_PRESENTAR.map(doc => {
+                        const ok = s.docsEntregados?.includes(doc);
+                        return (
+                          <div key={doc} style={{
+                            padding: "6px 10px", borderRadius: 6, fontSize: 12,
+                            background: ok ? COLORS.successBg : "#fff5f5",
+                            color: ok ? COLORS.success : COLORS.danger,
+                            fontWeight: 600, display: "flex", alignItems: "center", gap: 6,
+                          }}>
+                            {ok ? "✓" : "✕"} {doc}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Section>
+                </Card>
+
+                {/* Responsable de pago */}
+                <Card>
+                  <Section title="Responsable de Pago" icon="💳">
+                    <div style={grid3}>
+                      <Dato label="Apellidos" value={s.rpApellidos} />
+                      <Dato label="Nombres" value={s.rpNombres} />
+                      <Dato label="Tel. Fijo" value={s.rpTelFijo} />
+                      <Dato label="Celular" value={s.rpCelular} />
+                      <Dato label="Email" value={s.rpEmail} span={2} />
+                    </div>
+                  </Section>
+                  <div style={{
+                    padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 700,
+                    background: s.pagado ? COLORS.successBg : COLORS.warningBg,
+                    color: s.pagado ? COLORS.success : COLORS.warning,
+                    textAlign: "center",
+                  }}>
+                    {s.pagado ? "✓ El alumno PAGÓ la reserva" : "⏳ El alumno NO PAGÓ la reserva"}
+                  </div>
+                </Card>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Config */}
+        {view === "config" && (
+          <div className="fade-in">
+            <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 20 }}>Configuración</h1>
+            <Card>
+              <Section title="Datos" icon="💾">
+                <p style={{ fontSize: 13, color: COLORS.textMid, marginBottom: 16 }}>
+                  Actualmente hay {data.solicitudes.length} solicitud{data.solicitudes.length !== 1 ? "es" : ""} registrada{data.solicitudes.length !== 1 ? "s" : ""}.
+                </p>
+                <button className="btn-danger" onClick={handleResetData}>Borrar todos los datos</button>
+              </Section>
+              <Section title="Programas Disponibles" icon="📚">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+                  {PROGRAMAS.map(p => (
+                    <div key={p.codigo} style={{
+                      padding: "8px 14px", borderRadius: 6, background: "#fafafa",
+                      border: `1px solid ${COLORS.border}`, fontSize: 13,
+                    }}>
+                      <span style={{ fontWeight: 700, color: COLORS.primary }}>{p.codigo}</span>
+                      <span style={{ color: COLORS.textMid }}> — {p.nombre}</span>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            </Card>
+          </div>
+        )}
+      </main>
+
+      {/* Modal */}
+      <Modal open={showForm} onClose={() => { setShowForm(false); setEditingSolicitud(null); }}
+        title={editingSolicitud?.apellidos ? `Editar: ${editingSolicitud.apellidos}, ${editingSolicitud.nombres}` : "Nueva Solicitud de Admisión"}
+        wide>
+        {editingSolicitud && (
+          <SolicitudForm
+            solicitud={editingSolicitud}
+            onChange={setEditingSolicitud}
+            onSave={handleSaveSolicitud}
+            onCancel={() => { setShowForm(false); setEditingSolicitud(null); }}
+          />
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+// Mount the app
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
